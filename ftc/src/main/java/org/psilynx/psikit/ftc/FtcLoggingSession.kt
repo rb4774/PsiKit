@@ -12,6 +12,8 @@ import org.psilynx.psikit.core.rlog.RLOGServer
 import org.psilynx.psikit.core.rlog.RLOGWriter
 import java.text.SimpleDateFormat
 import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
 
 /**
  * Composition-based PsiKit logging helper for FTC [LinearOpMode]s.
@@ -128,6 +130,30 @@ class FtcLoggingSession {
     }
 
     private fun recordOpModeMetadata(opMode: LinearOpMode) {
+        // General runtime/environment metadata.
+        Logger.recordMetadata("RuntimeType", "FTC")
+        Logger.recordMetadata("DeviceManufacturer", android.os.Build.MANUFACTURER ?: "")
+        Logger.recordMetadata("DeviceModel", android.os.Build.MODEL ?: "")
+        Logger.recordMetadata("DeviceProduct", android.os.Build.PRODUCT ?: "")
+        Logger.recordMetadata("AndroidRelease", android.os.Build.VERSION.RELEASE ?: "")
+        Logger.recordMetadata("AndroidSdkInt", android.os.Build.VERSION.SDK_INT.toString())
+
+        // PsiKit version metadata (best-effort; BuildConfig may not be generated for library modules).
+        try {
+            val buildConfig = Class.forName("org.psilynx.psikit.ftc.BuildConfig")
+            val versionName = buildConfig.getField("VERSION_NAME").get(null) as? String
+            if (!versionName.isNullOrBlank()) {
+                Logger.recordMetadata("PsiKitVersion", versionName)
+            }
+        } catch (_: Throwable) {
+            // ignore
+        }
+
+        val utc = SimpleDateFormat("yyyy-MM-dd HH:mm:ss 'UTC'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+        Logger.recordMetadata("SessionStart", utc.format(Date()))
+
         val teleOp = opMode::class.java.getAnnotation(TeleOp::class.java)
         if (teleOp != null) {
             Logger.recordMetadata("OpMode Name", teleOp.name)

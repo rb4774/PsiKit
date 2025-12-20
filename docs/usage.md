@@ -35,6 +35,12 @@ If you don't want to subclass `PsiKitLinearOpMode`, you can use `FtcLoggingSessi
 import org.psilynx.psikit.core.Logger;
 import org.psilynx.psikit.ftc.FtcLoggingSession;
 
+// Optional: record build metadata (Git SHA, branch, etc.) before session.start().
+// Logger.recordMetadata("GitSHA", BuildConfig.GIT_SHA);
+// Logger.recordMetadata("GitBranch", BuildConfig.GIT_BRANCH);
+// Logger.recordMetadata("GitDirty", BuildConfig.GIT_DIRTY);
+// Logger.recordMetadata("BuildDate", BuildConfig.BUILD_DATE);
+
 FtcLoggingSession session = new FtcLoggingSession();
 // session.enablePinpointOdometryLogging = false; // optional opt-out
 
@@ -49,6 +55,49 @@ while (opModeIsActive()) {
     Logger.periodicAfterUser(0.0, 0.0);
 }
 session.end();
+```
+
+#### FTC: Getting the Git commit SHA
+On-robot code generally cannot read `.git`, so the usual approach is to inject Git info at *build time* (Gradle) into `BuildConfig`, then call `Logger.recordMetadata(...)`.
+
+In your `TeamCode/build.gradle` (Groovy), you can add something like:
+
+```groovy
+def gitSha = "unknown"
+def gitBranch = "unknown"
+def gitDirty = "unknown"
+try {
+    def out = new ByteArrayOutputStream()
+    exec { commandLine 'git', 'rev-parse', '--short=12', 'HEAD'; standardOutput = out }
+    gitSha = out.toString().trim()
+
+    out = new ByteArrayOutputStream()
+    exec { commandLine 'git', 'rev-parse', '--abbrev-ref', 'HEAD'; standardOutput = out }
+    gitBranch = out.toString().trim()
+
+    out = new ByteArrayOutputStream()
+    exec { commandLine 'git', 'status', '--porcelain'; standardOutput = out }
+    gitDirty = out.toString().trim().isEmpty() ? "false" : "true"
+} catch (ignored) {
+}
+
+android {
+    defaultConfig {
+        buildConfigField "String", "GIT_SHA", "\"${gitSha}\""
+        buildConfigField "String", "GIT_BRANCH", "\"${gitBranch}\""
+        buildConfigField "String", "GIT_DIRTY", "\"${gitDirty}\""
+        buildConfigField "String", "BUILD_DATE", "\"${new Date().toString()}\""
+    }
+}
+```
+
+Then in your OpMode init (before `Logger.start()`):
+
+```java
+Logger.recordMetadata("GitSHA", BuildConfig.GIT_SHA);
+Logger.recordMetadata("GitBranch", BuildConfig.GIT_BRANCH);
+Logger.recordMetadata("GitDirty", BuildConfig.GIT_DIRTY);
+Logger.recordMetadata("BuildDate", BuildConfig.BUILD_DATE);
 ```
 
 ### FTC note: Logging an estimator/fused pose (Pedro Pathing)
