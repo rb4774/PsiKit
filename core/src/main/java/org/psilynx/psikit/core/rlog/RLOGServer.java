@@ -152,6 +152,14 @@ public class RLOGServer implements LogDataReceiver {
           Socket socket = s.accept();
           byte[] data;
           synchronized (encoderLock) {
+            // In live mode, clients may connect before the first table is broadcast.
+            // Seed the encoder from the current logger entry so the newcomer snapshot
+            // includes the initial fields (metadata + any startup outputs) immediately.
+            try {
+              encoder.encodeTable(LogTable.clone(Logger.getEntry()), false);
+            } catch (Throwable ignored) {
+              // ignore
+            }
             data = encodeData(encoder.getNewcomerData().array());
           }
           OutputStream out = socket.getOutputStream();

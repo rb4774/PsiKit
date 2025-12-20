@@ -32,17 +32,17 @@ If you don't want to subclass `PsiKitLinearOpMode`, you can use `FtcLoggingSessi
 - Set `session.enablePinpointOdometryLogging = false` to opt out.
 
 ```java
-import org.psilynx.psikit.core.Logger;
 import org.psilynx.psikit.ftc.FtcLoggingSession;
-
-// Optional: record build metadata (Git SHA, branch, etc.) before session.start().
-// Logger.recordMetadata("GitSHA", BuildConfig.GIT_SHA);
-// Logger.recordMetadata("GitBranch", BuildConfig.GIT_BRANCH);
-// Logger.recordMetadata("GitDirty", BuildConfig.GIT_DIRTY);
-// Logger.recordMetadata("BuildDate", BuildConfig.BUILD_DATE);
 
 FtcLoggingSession session = new FtcLoggingSession();
 // session.enablePinpointOdometryLogging = false; // optional opt-out
+
+// Optional: record build metadata (Git SHA, branch, etc.) before session.start().
+// Use session.recordMetadata(...) (NOT Logger.recordMetadata) because session.start() calls Logger.reset().
+// session.recordMetadata("GitSHA", BuildConfig.GIT_SHA);
+// session.recordMetadata("GitBranch", BuildConfig.GIT_BRANCH);
+// session.recordMetadata("GitDirty", BuildConfig.GIT_DIRTY);
+// session.recordMetadata("BuildDate", BuildConfig.BUILD_DATE);
 
 session.start(this, 5810);
 
@@ -58,7 +58,7 @@ session.end();
 ```
 
 #### FTC: Getting the Git commit SHA
-On-robot code generally cannot read `.git`, so the usual approach is to inject Git info at *build time* (Gradle) into `BuildConfig`, then call `Logger.recordMetadata(...)`.
+On-robot code generally cannot read `.git`, so the usual approach is to inject Git info at *build time* (Gradle) into `BuildConfig`, then record it as metadata.
 
 In your `TeamCode/build.gradle` (Groovy), you can add something like:
 
@@ -99,6 +99,8 @@ Logger.recordMetadata("GitBranch", BuildConfig.GIT_BRANCH);
 Logger.recordMetadata("GitDirty", BuildConfig.GIT_DIRTY);
 Logger.recordMetadata("BuildDate", BuildConfig.BUILD_DATE);
 ```
+
+If you're using `FtcLoggingSession`, call `session.recordMetadata(...)` instead of `Logger.recordMetadata(...)`.
 
 ### FTC note: Logging an estimator/fused pose (Pedro Pathing)
 If you use Pedro Pathing, `PedroFollowerPoseLogger` can log the follower's pose (inches/radians) as an AdvantageScope `Pose2d` struct. It uses reflection, so PsiKit does not need a compile-time dependency on Pedro.

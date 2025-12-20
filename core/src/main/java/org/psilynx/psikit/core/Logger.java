@@ -163,6 +163,52 @@ public class Logger {
         metadataTable.put(item.getKey(), item.getValue());
       }
 
+      // Metadata echo: write a small set of numeric fields under RealOutputs so tools that
+      // don't display string metadata can still confirm metadata is present.
+      // (These are stable for the session and are safe to write once at startup.)
+      try {
+        outputTable.put("PsiKit/MetadataEcho/MetadataCount", (long) metadata.size());
+        outputTable.put("PsiKit/MetadataEcho/HasMetadata", !metadata.isEmpty());
+
+        // Also mirror common fields as STRING outputs for easy discovery/search in viewers.
+        // Some viewers hide RealMetadata from the tree and may not populate a metadata tab.
+        for (Map.Entry<String, String> item : metadata.entrySet()) {
+          String k = item.getKey();
+          if (k == null) continue;
+          // Keep this table small and stable; only mirror likely-useful fields.
+          if (k.equals("GitSHA")
+              || k.equals("GitBranch")
+              || k.equals("GitDate")
+              || k.equals("GitDirty")
+              || k.equals("BuildDate")
+              || k.equals("RobotConfigName")
+              || k.equals("SessionStart")
+              || k.equals("OpMode Name")
+              || k.equals("OpMode type")
+              || k.equals("DeviceModel")
+              || k.equals("AndroidRelease")
+              || k.equals("AndroidSdkInt")) {
+            outputTable.put("PsiKit/BuildInfo/" + k, item.getValue() == null ? "" : item.getValue());
+          }
+        }
+
+        // If present, hash GitSHA into a numeric field for easy display.
+        String gitSha = metadata.get("GitSHA");
+        if (gitSha != null) {
+          long hash = ((long) gitSha.hashCode()) & 0xffffffffL;
+          outputTable.put("PsiKit/MetadataEcho/GitShaHash", hash);
+          outputTable.put("PsiKit/MetadataEcho/HasGitSha", !gitSha.isEmpty());
+        }
+
+        String gitDirty = metadata.get("GitDirty");
+        if (gitDirty != null) {
+          boolean dirty = gitDirty.equalsIgnoreCase("true") || gitDirty.equals("1") || gitDirty.equalsIgnoreCase("yes");
+          outputTable.put("PsiKit/MetadataEcho/GitDirty", dirty);
+        }
+      } catch (Throwable ignored) {
+        // ignore
+      }
+
       // Start receiver thread
       receiverThread.start();
 
