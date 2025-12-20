@@ -15,8 +15,44 @@ The class you will interact the most with is `Logger`. It acts as a manager for 
 
 4. Add any metadata with `Logger.recordMetadata(String key, String value)`
 
+### FTC note: HardwareMap logging + replay determinism
+PsiKit's FTC module wraps the FTC SDK `hardwareMap` to (a) log device IO under `HardwareMap/...` and (b) build a replay-time device manifest under `HardwareMap/_manifest`.
+
+This only works if your code requests hardware through the *wrapped* `hardwareMap`:
+- If you subclass `PsiKitOpMode` / `PsiKitLinearOpMode`, this is handled for you via `psiKitSetup()`.
+- If you do not subclass, make sure you wrap `hardwareMap` **before** you construct any robot/subsystem objects that call `hardwareMap.get(...)`.
+
 > If, for some reason, you cannot subclass `PsiKitOpMode`, please look 
 > through it's code to see what additional methods you must call
+
+### FTC note: `FtcLoggingSession` (recommended for `LinearOpMode`)
+If you don't want to subclass `PsiKitLinearOpMode`, you can use `FtcLoggingSession` as a composition helper. It wraps `hardwareMap`, starts the logger, and provides a per-loop hook for DriverStation + HardwareMap logging.
+
+- Pinpoint odometry logging is **enabled by default** and becomes a no-op if no Pinpoint device is configured.
+- Set `session.enablePinpointOdometryLogging = false` to opt out.
+
+```java
+import org.psilynx.psikit.core.Logger;
+import org.psilynx.psikit.ftc.FtcLoggingSession;
+
+FtcLoggingSession session = new FtcLoggingSession();
+// session.enablePinpointOdometryLogging = false; // optional opt-out
+
+session.start(this, 5810);
+
+while (opModeIsActive()) {
+    Logger.periodicBeforeUser();
+    session.logOncePerLoop(this);
+
+    // your opmode logic...
+
+    Logger.periodicAfterUser(0.0, 0.0);
+}
+session.end();
+```
+
+### FTC note: Logging an estimator/fused pose (Pedro Pathing)
+If you use Pedro Pathing, `PedroFollowerPoseLogger` can log the follower's pose (inches/radians) as an AdvantageScope `Pose2d` struct. It uses reflection, so PsiKit does not need a compile-time dependency on Pedro.
 
 ## Other Methods
 In addition to the methods listed above, here are the most common ways you will interact with Psi Kit:

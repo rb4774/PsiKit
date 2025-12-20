@@ -9,13 +9,15 @@ group = 'org.psilynx.psikit'
 
 publishing {
     repositories {
-        maven {
-            name = "dairyRelease"
-            url = uri("https://repo.dairy.foundation/releases")
-            credentials(PasswordCredentials)
+        if (project.hasProperty('dairyReleaseUsername') && project.hasProperty('dairyReleasePassword')) {
+            maven {
+                name = "dairyRelease"
+                url = uri("https://repo.dairy.foundation/releases")
+                credentials(PasswordCredentials)
 
-            authentication {
-                basic(BasicAuthentication)
+                authentication {
+                    basic(BasicAuthentication)
+                }
             }
         }
     }

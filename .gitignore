@@ -8,13 +8,10 @@ gradlew.bat
 docs/.idea/**
 .idea/**
 
-#build files
-build/**
-core/build/**
-ftc/build/**
-
-logs/**
-core/logs/**
+# build + generated output folders
+**/build/**
+**/bin/**
+**/logs/**
 !core/logs/testLog.rlog
 
 local.properties

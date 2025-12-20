@@ -23,9 +23,14 @@ public class RLOGDecoder {
   private Byte logRevision = null;
   private LogTable table = new LogTable(0);
   private Map<Short, Pair<String, String>> keyIDs = new HashMap<>();
+  private boolean eofReached = false;
 
   public LogTable decodeTable(DataInputStream input) {
     try {
+      if (eofReached) {
+        return null;
+      }
+
       if (logRevision == null) {
         this.total = input.available();
         logRevision = input.readByte();
@@ -70,6 +75,8 @@ public class RLOGDecoder {
         }
       } catch (EOFException ignored){
         Logger.logInfo("got EOF, ending read of input file");
+        eofReached = true;
+        // Return the final decoded table once.
         return new LogTable(table.getTimestamp(), table);
       }
 
@@ -122,6 +129,9 @@ public class RLOGDecoder {
         long val = input.readLong();
         table.put(key, val);
         break;
+      case Float:
+        table.put(key, input.readFloat());
+        break;
       case Double:
         table.put(key, input.readDouble());
         break;
@@ -136,15 +146,22 @@ public class RLOGDecoder {
         table.put(key, booleanArray);
         break;
       case IntegerArray:
-        int[] intArray = new int[length / 4];
-        for (int i = 0; i < length; i++) {
-          intArray[i] = input.readInt();
+        long[] intArray = new long[length / Long.BYTES];
+        for (int i = 0; i < intArray.length; i++) {
+          intArray[i] = input.readLong();
         }
         table.put(key, intArray);
         break;
+      case FloatArray:
+        float[] floatArray = new float[length / Float.BYTES];
+        for (int i = 0; i < floatArray.length; i++) {
+          floatArray[i] = input.readFloat();
+        }
+        table.put(key, floatArray);
+        break;
       case DoubleArray:
-        double[] doubleArray = new double[length / 8];
-        for (int i = 0; i < length; i++) {
+        double[] doubleArray = new double[length / Double.BYTES];
+        for (int i = 0; i < doubleArray.length; i++) {
           doubleArray[i] = input.readDouble();
         }
         table.put(key, doubleArray);

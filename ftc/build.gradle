@@ -44,13 +44,15 @@ afterEvaluate {
         }
 
         repositories {
-            maven {
-                name = "dairyRelease"
-                url = uri("https://repo.dairy.foundation/releases")
-                credentials(PasswordCredentials)
+            if (project.hasProperty('dairyReleaseUsername') && project.hasProperty('dairyReleasePassword')) {
+                maven {
+                    name = "dairyRelease"
+                    url = uri("https://repo.dairy.foundation/releases")
+                    credentials(PasswordCredentials)
 
-                authentication {
-                    basic(BasicAuthentication)
+                    authentication {
+                        basic(BasicAuthentication)
+                    }
                 }
             }
         }
@@ -61,13 +63,15 @@ afterEvaluate {
 repositories {
     google()
     mavenCentral()
-    maven {
-        name = "dairyPrivate"
-        url = uri("https://repo.dairy.foundation/private")
-        credentials(PasswordCredentials)
+    if (project.hasProperty('dairyPrivateUsername') && project.hasProperty('dairyPrivatePassword')) {
+        maven {
+            name = "dairyPrivate"
+            url = uri("https://repo.dairy.foundation/private")
+            credentials(PasswordCredentials)
 
-        authentication {
-            basic(BasicAuthentication)
+            authentication {
+                basic(BasicAuthentication)
+            }
         }
     }
     maven { url "https://repo.dairy.foundation/releases" }

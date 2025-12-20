@@ -19,7 +19,6 @@
   - Swerve view
   - Live tuning
   - Log file review
-  - Joysticks
 
 * Some features should work, but are untested. these are: 
   - Comparison to a video of the match

@@ -17,6 +17,9 @@ abstract class PsiKitLinearOpMode: LinearOpMode() {
 
     lateinit var allHubs: List<LynxModule>
 
+    private val driverStationLogger = DriverStationLogger()
+    private val pinpointOdometryLogger = PinpointOdometryLogger()
+
     /*
      * updates the hardware map input. this must be called before accessing
      * any hardware every loop. It's safest to call it right after
@@ -30,6 +33,13 @@ abstract class PsiKitLinearOpMode: LinearOpMode() {
         OpModeControls.started = isStarted
         OpModeControls.stopped = isStopRequested
         Logger.processInputs("OpModeControls", OpModeControls)
+
+        // DriverStation inputs (AdvantageScope Joysticks schema).
+        // Always log these, even if downstream swaps gamepad1/2 back to raw FTC instances.
+        driverStationLogger.log(gamepad1, gamepad2)
+
+        // Pinpoint odometry (AdvantageScope Pose2d/Pose3d structs under /Odometry).
+        pinpointOdometryLogger.logAll(hardwareMap)
 
         HardwareMapWrapper.devicesToProcess.forEach {
             val timeToLog = measureTime {

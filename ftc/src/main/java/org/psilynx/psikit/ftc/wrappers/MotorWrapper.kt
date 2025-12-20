@@ -61,6 +61,9 @@ class MotorWrapper(
     private var _zeroPowerBehavior = DcMotor.ZeroPowerBehavior.UNKNOWN
     private var _powerFloat  = false
     private var _overCurrent = false
+    private var _currentAmps = 0.0
+    private var _currentAlertAmps = 0.0
+    private var _lastCurrentReadNs = 0L
     private var _currentPos  = 0
     private var _currentVel  = 0.0
     private var _power       = 0.0
@@ -69,24 +72,53 @@ class MotorWrapper(
     private var _connectionInfo = ""
     private var _manufacturer   = HardwareDevice.Manufacturer.Other
 
+    private fun shouldReadCurrentNow(): Boolean {
+        // Reading motor current can be slow on some hubs/SDKs. Rate-limit while still logging.
+        val now = System.nanoTime()
+        val last = _lastCurrentReadNs
+        if (last == 0L || (now - last) >= 50_000_000L) { // 0.05s
+            _lastCurrentReadNs = now
+            return true
+        }
+        return false
+    }
+
     override fun new(wrapped: DcMotorImplEx?) = MotorWrapper(wrapped)
 
     override fun toLog(table: LogTable) {
-        device!!
-        _zeroPowerBehavior = device.zeroPowerBehavior
-        _powerFloat        = device.powerFloat
-        _overCurrent       = device.isOverCurrent
-        _currentPos        = device.currentPosition
-        _currentVel        = device.velocity
-        _power             = device.power
-        _deviceName        = device.deviceName
-        _version           = device.version
-        _connectionInfo    = device.connectionInfo
-        _manufacturer      = device.manufacturer
+        val d = device
+        if (d != null) {
+            _zeroPowerBehavior = d.zeroPowerBehavior
+            _powerFloat        = d.powerFloat
+            _overCurrent       = d.isOverCurrent
+            _currentPos        = d.currentPosition
+            _currentVel        = d.velocity
+            _power             = d.power
+            _deviceName        = d.deviceName
+            _version           = d.version
+            _connectionInfo    = d.connectionInfo
+            _manufacturer      = d.manufacturer
+
+            if (shouldReadCurrentNow()) {
+                _currentAmps = try {
+                    d.getCurrent(CurrentUnit.AMPS)
+                } catch (_: Throwable) {
+                    _currentAmps
+                }
+
+                _currentAlertAmps = try {
+                    d.getCurrentAlert(CurrentUnit.AMPS)
+                } catch (_: Throwable) {
+                    _currentAlertAmps
+                }
+            }
+        }
 
         table.put("zeroPowerBehavior", _zeroPowerBehavior)
         table.put("powerFloat", _powerFloat)
         table.put("overCurrent", _overCurrent)
+        table.put("currentAmps", _currentAmps)
+        table.put("currentAlertAmps", _currentAlertAmps)
         table.put("currentPos", _currentPos)
         table.put("currentVel", _currentVel)
         table.put("power", _power)
@@ -101,6 +133,8 @@ class MotorWrapper(
         _zeroPowerBehavior = table.get("zeroPowerBehavior", DcMotor.ZeroPowerBehavior.UNKNOWN)
         _powerFloat        = table.get("powerFloat", false)
         _overCurrent       = table.get("overCurrent", false)
+        _currentAmps        = table.get("currentAmps", 0.0)
+        _currentAlertAmps   = table.get("currentAlertAmps", 0.0)
         _currentPos        = table.get("currentPos", 0)
         _currentVel        = table.get("currentVel", 0.0)
         _power             = table.get("power", 0.0)
@@ -110,23 +144,120 @@ class MotorWrapper(
         _manufacturer      = table.get("manufacturer", HardwareDevice.Manufacturer.Other)
     }
 
-    override fun getZeroPowerBehavior() = _zeroPowerBehavior
-    override fun setZeroPowerBehavior(zeroPowerBehavior: DcMotor.ZeroPowerBehavior?)
-        = device?.setZeroPowerBehavior(zeroPowerBehavior) ?: Unit
+    override fun getZeroPowerBehavior() = device?.zeroPowerBehavior ?: _zeroPowerBehavior
+    override fun setZeroPowerBehavior(zeroPowerBehavior: DcMotor.ZeroPowerBehavior?) {
+        if (zeroPowerBehavior != null) {
+            _zeroPowerBehavior = zeroPowerBehavior
+        }
+        device?.setZeroPowerBehavior(zeroPowerBehavior)
+    }
 
-    override fun getPowerFloat() = _powerFloat
-    override fun getCurrentPosition() = _currentPos
-    override fun getVelocity() = _currentVel
-    override fun getPower() = _power
-    override fun isOverCurrent() = _overCurrent
+    override fun getPowerFloat() = device?.powerFloat ?: _powerFloat
+    override fun getCurrentPosition() = device?.currentPosition ?: _currentPos
+    override fun getVelocity() = device?.velocity ?: _currentVel
+    override fun getPower() = device?.power ?: _power
+    override fun isOverCurrent() = device?.isOverCurrent ?: _overCurrent
+
+    override fun getCurrent(unit: CurrentUnit): Double {
+        val d = device
+        if (d != null) {
+            return try {
+                d.getCurrent(unit)
+            } catch (_: Throwable) {
+                0.0
+            }
+        }
+        return when (unit) {
+            CurrentUnit.AMPS -> _currentAmps
+            CurrentUnit.MILLIAMPS -> _currentAmps * 1000.0
+        }
+    }
+
+    override fun getCurrentAlert(unit: CurrentUnit): Double {
+        val d = device
+        if (d != null) {
+            return try {
+                d.getCurrentAlert(unit)
+            } catch (_: Throwable) {
+                0.0
+            }
+        }
+        return when (unit) {
+            CurrentUnit.AMPS -> _currentAlertAmps
+            CurrentUnit.MILLIAMPS -> _currentAlertAmps * 1000.0
+        }
+    }
+
+    override fun setCurrentAlert(current: Double, unit: CurrentUnit) {
+        val amps = when (unit) {
+            CurrentUnit.AMPS -> current
+            CurrentUnit.MILLIAMPS -> current / 1000.0
+        }
+        _currentAlertAmps = amps
+        try {
+            device?.setCurrentAlert(current, unit)
+        } catch (_: Throwable) {
+            // ignore
+        }
+    }
 
 
-    override fun getDeviceName() = _deviceName
-    override fun getVersion() = _version
-    override fun getConnectionInfo() = _connectionInfo
-    override fun getManufacturer() = _manufacturer
+    override fun getDeviceName() = device?.deviceName ?: _deviceName
+    override fun getVersion() = device?.version ?: _version
+    override fun getConnectionInfo() = device?.connectionInfo ?: _connectionInfo
+    override fun getManufacturer() = device?.manufacturer ?: _manufacturer
 
-    override fun setPower(power: Double) = device?.setPower(power) ?: Unit
+    override fun setDirection(direction: DcMotorSimple.Direction) {
+        val d = device
+        if (d != null) {
+            d.direction = direction
+        } else {
+            super.setDirection(direction)
+        }
+    }
+
+    override fun getDirection(): DcMotorSimple.Direction {
+        val d = device
+        return d?.direction ?: super.direction
+    }
+
+    override fun setMode(mode: DcMotor.RunMode) {
+        val d = device
+        if (d != null) {
+            d.mode = mode
+        } else {
+            super.setMode(mode)
+        }
+    }
+
+    override fun getMode(): DcMotor.RunMode {
+        val d = device
+        return d?.mode ?: super.getMode()
+    }
+
+    override fun setTargetPosition(position: Int) {
+        val d = device
+        if (d != null) {
+            d.targetPosition = position
+        } else {
+            super.setTargetPosition(position)
+        }
+    }
+
+    override fun getTargetPosition(): Int {
+        val d = device
+        return d?.targetPosition ?: super.getTargetPosition()
+    }
+
+    override fun isBusy(): Boolean {
+        val d = device
+        return d?.isBusy ?: super.isBusy()
+    }
+
+    override fun setPower(power: Double) {
+        _power = power
+        device?.setPower(power)
+    }
 
     override fun close() { device?.close() }
 

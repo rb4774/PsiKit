@@ -13,6 +13,9 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.DataInputStream;
 import java.io.DataOutputStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Random;
 
 import static org.junit.Assert.*;
@@ -21,31 +24,47 @@ import static java.lang.Thread.sleep;
 public class LogFileTest {
 
     @Test
-    public void testReadFile() throws InterruptedException {
+    public void testReadFile() throws Exception {
+        // Create a deterministic log file, then replay it.
+        Path outDir = Paths.get("core", "build", "testLogs");
+        Files.createDirectories(outDir);
+        String outFileName = "generated_testLog";
+        String outFilePath = outDir.resolve(outFileName + ".rlog").toString();
+
+        // Write log
         Logger.reset();
-        RLOGReplay replaySource = new RLOGReplay(
-                "logs/testLog.rlog"
-        );
-        replaySource.start();
+        int[] tick = new int[] { 1 };
+        Logger.setTimeSource(() -> tick[0] * 0.02);
+        Logger.disableConsoleCapture();
+        Logger.addDataReceiver(new RLOGWriter(outDir.toString() + "/", outFileName));
         TestInput inputs = new TestInput();
-        Logger.setReplaySource(replaySource);
-        //RLOGServer server = new RLOGServer();
-        //Logger.addDataReceiver(server);
         Logger.start();
         Logger.periodicAfterUser(0, 0);
-
         for (int i = 2; i < 400; i++) {
+            tick[0] = i;
+            inputs.number = i;
+            inputs.pose = new Pose2d(i, 2, Rotation2d.kZero);
             Logger.periodicBeforeUser();
             Logger.processInputs("TestInput", inputs);
-            LogTable table = Logger.getEntry();
-            System.out.println(table.getTimestamp());
-            System.out.println(i);
-            System.out.println(inputs.pose.getX());
-            System.out.println();
-            assert inputs.number == i;
-            assert Logger.getTimestamp() - ( i / 50000.0 ) < 1e-9;
-            assert inputs.pose.getX() == i;
-            sleep(20);
+            Logger.periodicAfterUser(0, 0);
+        }
+        Logger.end();
+
+        // Replay log
+        Logger.reset();
+        RLOGReplay replaySource = new RLOGReplay(outFilePath);
+        Logger.setReplaySource(replaySource);
+        Logger.start();
+        Logger.periodicAfterUser(0, 0);
+        TestInput replayInputs = new TestInput();
+        for (int i = 2; i < 400; i++) {
+            Logger.periodicBeforeUser();
+            assertTrue("Replay ended early at i=" + i, Logger.isRunning());
+            Logger.processInputs("TestInput", replayInputs);
+            assertEquals("number mismatch at i=" + i, i, replayInputs.number);
+            double poseX = replayInputs.pose != null ? replayInputs.pose.getX() : Double.NaN;
+            assertEquals("poseX mismatch at i=" + i, (double) i, poseX, 1e-9);
+            assertEquals("timestamp mismatch at i=" + i, i * 0.02, Logger.getTimestamp(), 1e-9);
             Logger.periodicAfterUser(0, 0);
         }
         Logger.end();
@@ -60,7 +79,7 @@ public class LogFileTest {
         Logger.reset();
         Logger.setTimeSource(this::getFakeTime);
         Logger.recordMetadata("alliance", "red");
-        RLOGWriter writer = new RLOGWriter("logs/", "serverTestLog");
+        RLOGWriter writer = new RLOGWriter("core/logs/", "serverTestLog");
         TestInput inputs = new TestInput();
         Logger.disableConsoleCapture();
         Logger.addDataReceiver(writer);

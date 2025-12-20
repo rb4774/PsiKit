@@ -11,5 +11,6 @@ Replay is a very powerful feature in Psi Kit. It allows you to record all the in
 
 ### Usage:
 1. Use `Logger.addDataReceiver(new RLOGWriter(String fileName))` to record data to a log file 
-2. Check the [list of supported I2C devices](/supportedI2c.md) to make sure that all of the hardware on your robot has supported wrappers
-3. Set up your OpMode loop to make sure that hardware gets processed, following the example OpMode on the [usage](/usage.md) page
+2. Check the [list of supported devices](/supported.md) to make sure that all of the hardware on your robot has supported wrappers
+3. Make sure your hardware is constructed using the *wrapped* `hardwareMap` (subclass `PsiKitOpMode` / `PsiKitLinearOpMode`, or call the equivalent setup before any `hardwareMap.get(...)` calls)
+4. Set up your OpMode loop to make sure that hardware gets processed, following the example OpMode on the [usage](/usage.md) page

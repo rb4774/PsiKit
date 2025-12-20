@@ -18,8 +18,8 @@ import java.util.Arrays;
 
 /** Sends log data over a socket connection using the RLOG format. */
 public class RLOGWriter implements LogDataReceiver {
-  private RLOGEncoder encoder = new RLOGEncoder();
-  private static final Object encoderLock = new Object();
+  private final RLOGEncoder encoder = new RLOGEncoder();
+  private final Object encoderLock = new Object();
   private final String filePath;
   private final String folder;
   private FileOutputStream fileOutputStream = null;
@@ -32,7 +32,6 @@ public class RLOGWriter implements LogDataReceiver {
     );
   }
   public RLOGWriter(String folder, String fileName){
-    this.folder = folder;
     if(!folder.endsWith("/")){
       folder = folder + "/";
     }
@@ -40,22 +39,42 @@ public class RLOGWriter implements LogDataReceiver {
       fileName = fileName + ".rlog";
     }
 
+    this.folder = folder;
     this.filePath = folder + fileName;
   }
 
   public void start() {
     Logger.logInfo("RLOG writer started");
-    File file = new File(filePath);
-    file.mkdirs();
-    file.delete();
     try {
-      file.createNewFile();
-      fileOutputStream = new FileOutputStream(filePath, true);
+      File folderFile = new File(folder);
+      //noinspection ResultOfMethodCallIgnored
+      folderFile.mkdirs();
+
+      fileOutputStream = new FileOutputStream(filePath, false);
     } catch (IOException e) {
       Logger.logError(
-        "error opening log file\n"
+        "error opening log file \"" + filePath + "\": " + e.getClass().getSimpleName() + ": " + e.getMessage() + "\n"
         + Arrays.toString(e.getStackTrace())
       );
+    }
+  }
+
+  @Override
+  public void end() {
+    try {
+      if (fileOutputStream != null) {
+        fileOutputStream.flush();
+        fileOutputStream.close();
+      }
+    } catch (IOException e) {
+      Logger.logError(
+        "error closing log file \""
+          + filePath
+          + "\"\n"
+          + Arrays.toString(e.getStackTrace())
+      );
+    } finally {
+      fileOutputStream = null;
     }
   }
 
