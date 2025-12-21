@@ -17,15 +17,23 @@ class VoltageSensorWrapper(
     override fun new(wrapped: VoltageSensor?) = VoltageSensorWrapper(wrapped)
 
     override fun toLog(table: LogTable) {
-        device!!
-
-        _voltage = device.voltage
-        _deviceName = device.deviceName
-        _version = device.version
-        _connectionInfo = device.connectionInfo
-        _manufacturer = device.manufacturer
+        val d = device
+        if (d != null) {
+            _voltage = d.voltage
+            _deviceName = d.deviceName
+            _version = d.version
+            _connectionInfo = d.connectionInfo
+            _manufacturer = d.manufacturer
+        }
 
         table.put("voltage", voltage)
+        /**
+         * Stores the current sensor's human-readable device name in the backing table/map.
+         *
+         * This adds an entry under the key `"deviceName"` so downstream consumers (e.g., telemetry,
+         * logging, or serialization) can identify which physical/virtual voltage sensor produced the
+         * associated data.
+         */
         table.put("deviceName", deviceName)
         table.put("version", version)
         table.put("connectionInfo", connectionInfo)
