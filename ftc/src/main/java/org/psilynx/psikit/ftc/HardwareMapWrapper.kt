@@ -284,8 +284,12 @@ class HardwareMapWrapper(
             + " HardwareDevice"
         )
 
+        // On replay, never talk to real hardware devices.
+        // We still return the appropriate wrapper type, but pass null as the backing device.
+        val effectiveDevice: T? = if (isReplayMode()) null else device
+
         // this puts the device into the device mappings (real hardware only)
-        if (device != null) {
+        if (effectiveDevice != null) {
             when (device) {
                 is TouchSensorMultiplexer -> this.touchSensorMultiplexer.put(
                     name, device
@@ -315,7 +319,7 @@ class HardwareMapWrapper(
                 is LED -> this.led.put(name, device)
                 else -> {
                     Logger.logWarning(
-                        "device type ${device.apply { this::class.qualifiedName }}" +
+                        "device type ${device!!.javaClass.canonicalName}" +
                             " not in all device mappings"
                     )
                 }
@@ -327,9 +331,8 @@ class HardwareMapWrapper(
             recordLookupForManifest(classOrInterface, name)
         }
 
-        val deviceAsHardwareDevice = device as? HardwareDevice
         val wrapperPrototype = findWrapperPrototypeForRequest(classOrInterface)
-        val wrapper = wrapperPrototype?.new(deviceAsHardwareDevice)
+        val wrapper = wrapperPrototype?.new(effectiveDevice as? HardwareDevice)
 
         if (wrapper != null) {
             // Always attach for logging.

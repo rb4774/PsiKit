@@ -49,17 +49,18 @@ class CrServoWrapper(private val device: CRServoImplEx?):
     override fun new(wrapped: CRServoImplEx?) = CrServoWrapper(wrapped)
 
     override fun toLog(table: LogTable) {
-        device!!
-
-        _direction      = device.direction
-        _power          = device.power
-        _pwmLower       = device.pwmRange.usPulseLower.toDouble()
-        _pwmUpper       = device.pwmRange.usPulseUpper.toDouble()
-        _pwmEnabled     = device.isPwmEnabled
-        _deviceName     = device.deviceName
-        _version        = device.version
-        _connectionInfo = device.connectionInfo
-        _manufacturer   = device.manufacturer
+        val d = device
+        if (d != null) {
+            _direction      = d.direction
+            _power          = d.power
+            _pwmLower       = d.pwmRange.usPulseLower.toDouble()
+            _pwmUpper       = d.pwmRange.usPulseUpper.toDouble()
+            _pwmEnabled     = d.isPwmEnabled
+            _deviceName     = d.deviceName
+            _version        = d.version
+            _connectionInfo = d.connectionInfo
+            _manufacturer   = d.manufacturer
+        }
 
         table.put("direction", direction)
         table.put("power", power)
@@ -87,18 +88,31 @@ class CrServoWrapper(private val device: CRServoImplEx?):
 
     override fun getDirection() = _direction
 
-    override fun setDirection(direction: DcMotorSimple.Direction) =
-        device?.setDirection(direction) ?: Unit
+    override fun setDirection(direction: DcMotorSimple.Direction) {
+        _direction = direction
+        device?.setDirection(direction)
+    }
 
-    override fun setPower(power: Double) =
-        device?.setPower(power) ?: Unit
+    override fun setPower(power: Double) {
+        _power = power
+        device?.setPower(power)
+    }
 
-    override fun setPwmRange(range: PwmControl.PwmRange) =
-        device?.setPwmRange (range) ?: Unit
+    override fun setPwmRange(range: PwmControl.PwmRange) {
+        _pwmLower = range.usPulseLower.toDouble()
+        _pwmUpper = range.usPulseUpper.toDouble()
+        device?.setPwmRange(range)
+    }
 
-    override fun setPwmEnable() { device?.setPwmEnable() }
+    override fun setPwmEnable() {
+        _pwmEnabled = true
+        device?.setPwmEnable()
+    }
 
-    override fun setPwmDisable() { device?.setPwmDisable() }
+    override fun setPwmDisable() {
+        _pwmEnabled = false
+        device?.setPwmDisable()
+    }
 
     override fun getPower() = _power
     override fun getPwmRange() = PwmControl.PwmRange(_pwmLower, _pwmUpper)

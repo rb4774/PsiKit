@@ -20,5 +20,5 @@ java {
 }
 
 application {
-    mainClass = 'org.psilynx.psikit.tools.ShooterReplayDump'
+    mainClass = 'org.psilynx.psikit.tools.ToolsMain'
 }

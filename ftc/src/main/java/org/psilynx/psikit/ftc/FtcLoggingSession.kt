@@ -10,6 +10,7 @@ import org.psilynx.psikit.core.LoggableInputs
 import org.psilynx.psikit.core.Logger
 import org.psilynx.psikit.core.rlog.RLOGServer
 import org.psilynx.psikit.core.rlog.RLOGWriter
+import org.psilynx.psikit.ftc.wrappers.GamepadWrapper
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -77,6 +78,16 @@ class FtcLoggingSession {
         // Wrap hardwareMap for /HardwareMap/... inputs and replay manifest.
         opMode.hardwareMap = HardwareMapWrapper(opMode.hardwareMap)
         wrappedHardwareMap = opMode.hardwareMap
+
+        // Wrap gamepads so user code can read replayed inputs transparently.
+        // - In live mode, GamepadWrapper copies from the underlying FTC Gamepad into itself each loop.
+        // - In replay mode, GamepadWrapper populates itself from the log via fromLog().
+        if (opMode.gamepad1 !is LoggableInputs) {
+            opMode.gamepad1 = GamepadWrapper(opMode.gamepad1)
+        }
+        if (opMode.gamepad2 !is LoggableInputs) {
+            opMode.gamepad2 = GamepadWrapper(opMode.gamepad2)
+        }
 
         // Configure Lynx bulk caching like PsiKitLinearOpMode.
         allHubs = try {

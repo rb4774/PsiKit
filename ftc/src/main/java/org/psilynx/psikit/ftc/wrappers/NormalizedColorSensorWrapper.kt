@@ -93,10 +93,10 @@ class NormalizedColorSensorWrapper(
     }
 
     // HardwareDevice
-    override fun getManufacturer() = device?.manufacturer ?: _manufacturer
-    override fun getDeviceName() = device?.deviceName ?: _deviceName
-    override fun getConnectionInfo() = device?.connectionInfo ?: _connectionInfo
-    override fun getVersion() = device?.version ?: _version
+    override fun getManufacturer() = _manufacturer
+    override fun getDeviceName() = _deviceName
+    override fun getConnectionInfo() = _connectionInfo
+    override fun getVersion() = _version
     override fun resetDeviceConfigurationForOpMode() {
         device?.resetDeviceConfigurationForOpMode()
     }
@@ -106,7 +106,7 @@ class NormalizedColorSensorWrapper(
     }
 
     // NormalizedColorSensor
-    override fun getNormalizedColors(): NormalizedRGBA = device?.normalizedColors ?: _normalized
+    override fun getNormalizedColors(): NormalizedRGBA = _normalized
 
     override fun setGain(gain: Float) {
         _gain = gain
@@ -117,22 +117,10 @@ class NormalizedColorSensorWrapper(
         }
     }
 
-    override fun getGain(): Float = try {
-        device?.gain ?: _gain
-    } catch (_: Throwable) {
-        _gain
-    }
+    override fun getGain(): Float = _gain
 
     // DistanceSensor (supported by RevColorSensorV3; safe fallback otherwise)
     override fun getDistance(unit: DistanceUnit): Double {
-        val d = device
-        if (d is DistanceSensor) {
-            return try {
-                d.getDistance(unit)
-            } catch (_: Throwable) {
-                Double.NaN
-            }
-        }
         return if (_distanceMm.isNaN()) Double.NaN else unit.fromMm(_distanceMm)
     }
 }

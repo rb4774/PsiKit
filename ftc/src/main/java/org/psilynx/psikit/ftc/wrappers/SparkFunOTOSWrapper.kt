@@ -31,40 +31,44 @@ class SparkFunOTOSWrapper(
     private var _accStd: DoubleArray = doubleArrayOf(0.0, 0.0, 0.0)
 
     override fun toLog(table: LogTable) {
-        table.put("deviceName", deviceName)
-        table.put("version", version)
-        table.put("connectionInfo", connectionInfo)
-        table.put("manufacturer", manufacturer.toString())
-        table.put("isConnected", isConnected)
-        table.put("imuCalibrationProgress", imuCalibrationProgress)
-        table.put("linearUnit", linearUnit.toString())
-        table.put("angularUnit", angularUnit.toString())
-        table.put("linearScalar", linearScalar)
-        table.put("angularScalar", angularScalar)
+        val d = device
+        if (d != null) {
+            _deviceName     = d.deviceName
+            _version        = d.version
+            _connectionInfo = d.connectionInfo
+            _manufacturer   = d.manufacturer
+
+            _isConnected    = d.isConnected
+            _imuCalProgress = d.imuCalibrationProgress
+            _linearUnit     = d.linearUnit
+            _angularUnit    = d.angularUnit
+            _linearScalar   = d.linearScalar
+            _angularScalar  = d.angularScalar
+
+            _pos    = poseToArray(d.position)
+            _vel    = poseToArray(d.velocity)
+            _acc    = poseToArray(d.acceleration)
+            _posStd = poseToArray(d.positionStdDev)
+            _velStd = poseToArray(d.velocityStdDev)
+            _accStd = poseToArray(d.accelerationStdDev)
+        }
+
+        table.put("deviceName", _deviceName)
+        table.put("version", _version)
+        table.put("connectionInfo", _connectionInfo)
+        table.put("manufacturer", _manufacturer.toString())
+        table.put("isConnected", _isConnected)
+        table.put("imuCalibrationProgress", _imuCalProgress)
+        table.put("linearUnit", _linearUnit.toString())
+        table.put("angularUnit", _angularUnit.toString())
+        table.put("linearScalar", _linearScalar)
+        table.put("angularScalar", _angularScalar)
         table.put("pos", _pos)
         table.put("vel", _vel)
         table.put("acc", _acc)
         table.put("posStd", _posStd)
         table.put("velStd", _velStd)
         table.put("accStd", _accStd)
-
-        _deviceName     = deviceName
-        _version        = version
-        _connectionInfo = connectionInfo
-        _manufacturer   = manufacturer
-        _isConnected    = isConnected
-        _imuCalProgress = imuCalibrationProgress
-        _linearUnit     = linearUnit
-        _angularUnit    = angularUnit
-        _linearScalar   = linearScalar
-        _angularScalar  = angularScalar
-
-        _pos    = poseToArray(position)
-        _vel    = poseToArray(velocity)
-        _acc    = poseToArray(acceleration)
-        _posStd = poseToArray(positionStdDev)
-        _velStd = poseToArray(velocityStdDev)
-        _accStd = poseToArray(accelerationStdDev)
     }
 
     override fun fromLog(table: LogTable) {
@@ -93,52 +97,52 @@ class SparkFunOTOSWrapper(
     }
 
     val isConnected: Boolean
-        get() = device?.isConnected ?: _isConnected
+        get() = _isConnected
 
     val imuCalibrationProgress: Int
-        get() = device?.imuCalibrationProgress ?: _imuCalProgress
+        get() = _imuCalProgress
 
     val linearUnit: DistanceUnit
-        get() = device?.linearUnit ?: _linearUnit
+        get() = _linearUnit
 
     val angularUnit: AngleUnit
-        get() = device?.angularUnit ?: _angularUnit
+        get() = _angularUnit
 
     val linearScalar: Double
-        get() = device?.linearScalar ?: _linearScalar
+        get() = _linearScalar
 
     val angularScalar: Double
-        get() = device?.angularScalar ?: _angularScalar
+        get() = _angularScalar
 
     val position: SparkFunOTOS.Pose2D?
-        get() = device?.position
+        get() = SparkFunOTOS.Pose2D(_pos[0], _pos[1], _pos[2])
 
     val velocity: SparkFunOTOS.Pose2D?
-        get() = device?.velocity
+        get() = SparkFunOTOS.Pose2D(_vel[0], _vel[1], _vel[2])
 
     val acceleration: SparkFunOTOS.Pose2D?
-        get() = device?.acceleration
+        get() = SparkFunOTOS.Pose2D(_acc[0], _acc[1], _acc[2])
 
     val positionStdDev: SparkFunOTOS.Pose2D?
-        get() = device?.positionStdDev
+        get() = SparkFunOTOS.Pose2D(_posStd[0], _posStd[1], _posStd[2])
 
     val velocityStdDev: SparkFunOTOS.Pose2D?
-        get() = device?.velocityStdDev
+        get() = SparkFunOTOS.Pose2D(_velStd[0], _velStd[1], _velStd[2])
 
     val accelerationStdDev: SparkFunOTOS.Pose2D?
-        get() = device?.accelerationStdDev
+        get() = SparkFunOTOS.Pose2D(_accStd[0], _accStd[1], _accStd[2])
 
     val deviceName: String
-        get() = device?.deviceName ?: _deviceName
+        get() = _deviceName
 
     val version: Int
-        get() = device?.version ?: _version
+        get() = _version
 
     val connectionInfo: String
-        get() = device?.connectionInfo ?: _connectionInfo
+        get() = _connectionInfo
 
     val manufacturer: HardwareDevice.Manufacturer
-        get() = device?.manufacturer ?: _manufacturer
+        get() = _manufacturer
 
     fun close() { device?.close() }
     fun resetDeviceConfigurationForOpMode() { device?.resetDeviceConfigurationForOpMode() }

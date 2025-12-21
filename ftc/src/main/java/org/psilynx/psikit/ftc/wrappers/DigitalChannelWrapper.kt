@@ -19,13 +19,15 @@ class DigitalChannelWrapper(
     override fun new(wrapped: DigitalChannel?) = DigitalChannelWrapper(wrapped)
 
     override fun toLog(table: LogTable) {
-        device!!
-        _mode          = device.mode
-        _state         = device.state
-        _deviceName    = device.deviceName
-        _version       = device.version
-        _connectionInfo = device.connectionInfo
-        _manufacturer   = device.manufacturer
+        val d = device
+        if (d != null) {
+            _mode          = d.mode
+            _state         = d.state
+            _deviceName    = d.deviceName
+            _version       = d.version
+            _connectionInfo = d.connectionInfo
+            _manufacturer   = d.manufacturer
+        }
 
         table.put("mode", mode)
         table.put("state", state)
@@ -47,15 +49,20 @@ class DigitalChannelWrapper(
 
     override fun getMode() = _mode
     override fun setMode(mode: DigitalChannel.Mode)
-        = device?.setMode(mode) ?: Unit
+    {
+        _mode = mode
+        device?.setMode(mode)
+    }
 
     @Deprecated("Deprecated in Java")
     override fun setMode(mode: DigitalChannelController.Mode) =
         device?.setMode(mode) ?: Unit
 
     override fun getState() = _state
-    override fun setState(state: Boolean) =
-        device?.setState(state) ?: Unit
+    override fun setState(state: Boolean) {
+        _state = state
+        device?.setState(state)
+    }
 
     override fun getDeviceName() = _deviceName
     override fun getVersion() = _version
