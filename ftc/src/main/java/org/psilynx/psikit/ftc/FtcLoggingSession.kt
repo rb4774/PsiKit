@@ -7,6 +7,7 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode
 import com.qualcomm.robotcore.eventloop.opmode.OpMode
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp
 import org.psilynx.psikit.core.LoggableInputs
+import org.psilynx.psikit.core.LogReplaySource
 import org.psilynx.psikit.core.Logger
 import org.psilynx.psikit.core.rlog.RLOGServer
 import org.psilynx.psikit.core.rlog.RLOGWriter
@@ -38,7 +39,13 @@ class FtcLoggingSession {
     private var allHubs: List<LynxModule>? = null
 
     @JvmOverloads
-    fun start(opMode: LinearOpMode, rlogPort: Int, filename: String = defaultLogFilename(opMode)) {
+    fun start(
+        opMode: LinearOpMode,
+        rlogPort: Int,
+        filename: String = defaultLogFilename(opMode),
+        folder: String = "/sdcard/FIRST/PsiKit/",
+        replaySource: LogReplaySource? = null,
+    ) {
         // If the prior OpMode was force-stopped, PsiKit may still be "running".
         try {
             Logger.end()
@@ -46,6 +53,12 @@ class FtcLoggingSession {
             // ignore
         }
         Logger.reset()
+
+        // Optional: configure replay before Logger.start().
+        if (replaySource != null) {
+            Logger.setReplay(true)
+            Logger.setReplaySource(replaySource)
+        }
 
         // Wrap hardwareMap for /HardwareMap/... inputs and replay manifest.
         opMode.hardwareMap = HardwareMapWrapper(opMode.hardwareMap)
@@ -65,8 +78,14 @@ class FtcLoggingSession {
         // Record basic OpMode metadata like PsiKit's base classes do.
         recordOpModeMetadata(opMode)
 
-        Logger.addDataReceiver(RLOGServer(rlogPort))
-        Logger.addDataReceiver(RLOGWriter(filename))
+        // Port 0 (or negative) disables the server. Useful in tests and competitions.
+        if (rlogPort > 0) {
+            Logger.addDataReceiver(RLOGServer(rlogPort))
+        }
+        // Blank filename disables file output. Useful for replay tests.
+        if (filename.isNotBlank()) {
+            Logger.addDataReceiver(RLOGWriter(folder, filename))
+        }
 
         if (Logger.isReplay()) {
             // Best-effort: avoid blocking forever in waitForStart()/opModeInInit().
