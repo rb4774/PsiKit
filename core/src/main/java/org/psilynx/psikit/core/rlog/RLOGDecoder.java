@@ -122,6 +122,9 @@ public class RLOGDecoder {
         long val = input.readLong();
         table.put(key, val);
         break;
+      case Float:
+        table.put(key, input.readFloat());
+        break;
       case Double:
         table.put(key, input.readDouble());
         break;
@@ -136,15 +139,24 @@ public class RLOGDecoder {
         table.put(key, booleanArray);
         break;
       case IntegerArray:
-        int[] intArray = new int[length / 4];
-        for (int i = 0; i < length; i++) {
-          intArray[i] = input.readInt();
+        // WPILOG int64[] stores 8 bytes per element.
+        long[] intArray = new long[length / 8];
+        for (int i = 0; i < intArray.length; i++) {
+          intArray[i] = input.readLong();
         }
         table.put(key, intArray);
         break;
+      case FloatArray:
+        // WPILOG float[] stores 4 bytes per element.
+        float[] floatArray = new float[length / 4];
+        for (int i = 0; i < floatArray.length; i++) {
+          floatArray[i] = input.readFloat();
+        }
+        table.put(key, floatArray);
+        break;
       case DoubleArray:
         double[] doubleArray = new double[length / 8];
-        for (int i = 0; i < length; i++) {
+        for (int i = 0; i < doubleArray.length; i++) {
           doubleArray[i] = input.readDouble();
         }
         table.put(key, doubleArray);
