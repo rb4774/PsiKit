@@ -61,18 +61,24 @@ class FtcLoggingSession {
         }
 
         // Wrap hardwareMap for /HardwareMap/... inputs and replay manifest.
-        opMode.hardwareMap = HardwareMapWrapper(opMode.hardwareMap)
-        wrappedHardwareMap = opMode.hardwareMap
+        val existingHardwareMap = opMode.hardwareMap
+        if (existingHardwareMap != null) {
+            opMode.hardwareMap = HardwareMapWrapper(existingHardwareMap)
+            wrappedHardwareMap = opMode.hardwareMap
 
-        // Configure Lynx bulk caching like PsiKitLinearOpMode.
-        allHubs = try {
-            val hubs = opMode.hardwareMap.getAll(LynxModule::class.java)
-            for (hub in hubs) {
-                hub.bulkCachingMode = MANUAL
+            // Configure Lynx bulk caching like PsiKitLinearOpMode.
+            allHubs = try {
+                val hubs = opMode.hardwareMap.getAll(LynxModule::class.java)
+                for (hub in hubs) {
+                    hub.bulkCachingMode = MANUAL
+                }
+                hubs
+            } catch (_: Throwable) {
+                null
             }
-            hubs
-        } catch (_: Throwable) {
-            null
+        } else {
+            wrappedHardwareMap = null
+            allHubs = null
         }
 
         // Record basic OpMode metadata like PsiKit's base classes do.
@@ -85,11 +91,6 @@ class FtcLoggingSession {
         // Blank filename disables file output. Useful for replay tests.
         if (filename.isNotBlank()) {
             Logger.addDataReceiver(RLOGWriter(folder, filename))
-        }
-
-        if (Logger.isReplay()) {
-            // Best-effort: avoid blocking forever in waitForStart()/opModeInInit().
-            forceOpModeStarted(opMode)
         }
 
         Logger.start()
@@ -107,9 +108,17 @@ class FtcLoggingSession {
     fun logOncePerLoop(opMode: LinearOpMode) {
         clearBulkCaches()
 
-        OpModeControls.started = opMode.isStarted
-        OpModeControls.stopped = opMode.isStopRequested
+        if (!Logger.isReplay()) {
+            OpModeControls.started = opMode.isStarted
+            OpModeControls.stopped = opMode.isStopRequested
+        }
         Logger.processInputs("OpModeControls", OpModeControls)
+
+        // In replay, drive the OpMode's state from the log so init/start/stop loops can be
+        // reproduced faithfully.
+        if (Logger.isReplay()) {
+            applyOpModeControls(opMode, OpModeControls.started, OpModeControls.stopped)
+        }
 
         // DriverStation inputs (AdvantageScope Joysticks schema).
         driverStationLogger.log(opMode.gamepad1, opMode.gamepad2)
@@ -165,13 +174,28 @@ class FtcLoggingSession {
         Logger.recordMetadata("OpMode type", "Unknown")
     }
 
-    private fun forceOpModeStarted(opMode: LinearOpMode) {
-        try {
-            val startedField = OpMode::class.java.getDeclaredField("isStarted")
-            startedField.isAccessible = true
-            startedField.setBoolean(opMode, true)
-        } catch (_: Throwable) {
-            // ignore
+    private fun applyOpModeControls(opMode: LinearOpMode, started: Boolean, stopped: Boolean) {
+        // FTC SDK (RobotCore 11.0.0): LinearOpMode's opModeInInit()/opModeIsActive() ultimately
+        // depend on internal fields on OpModeInternal (superclass of OpMode).
+        // Those fields are not declared on OpMode itself, so we must search the class hierarchy.
+        setBooleanFieldIfPresent(opMode, "isStarted", started)
+        setBooleanFieldIfPresent(opMode, "stopRequested", stopped)
+    }
+
+    private fun setBooleanFieldIfPresent(target: Any, fieldName: String, value: Boolean): Boolean {
+        var clazz: Class<*>? = target.javaClass
+        while (clazz != null) {
+            try {
+                val field = clazz.getDeclaredField(fieldName)
+                field.isAccessible = true
+                field.setBoolean(target, value)
+                return true
+            } catch (_: NoSuchFieldException) {
+                clazz = clazz.superclass
+            } catch (_: Throwable) {
+                return false
+            }
         }
+        return false
     }
 }
