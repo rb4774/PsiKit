@@ -47,3 +47,12 @@ dependencies {
     androidTestImplementation 'com.android.support.test:runner:1.0.2'
     androidTestImplementation 'com.android.support.test.espresso:espresso-core:3.0.2'
 }
+
+// Android Studio / Gradle tooling may create *RuntimeClasspathCopy configurations during model
+// building. These must be resolvable-only (not consumable) on Gradle 8+.
+configurations.configureEach {
+    if (name.endsWith('RuntimeClasspathCopy')) {
+        canBeConsumed = false
+        canBeResolved = true
+    }
+}
