@@ -83,6 +83,14 @@ subprojects {
         if (name.endsWith('RuntimeClasspathCopy')) {
             canBeConsumed = false
             canBeResolved = true
+
+            // Some tooling/plugins may mutate configuration flags after creation.
+            // Re-assert resolvable-only semantics right before resolution to avoid
+            // "resolution root and variant simultaneously" errors.
+            incoming.beforeResolve {
+                canBeConsumed = false
+                canBeResolved = true
+            }
         }
     }
 }
