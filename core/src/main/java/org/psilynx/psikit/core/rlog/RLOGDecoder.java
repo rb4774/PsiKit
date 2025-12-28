@@ -249,7 +249,8 @@ public class RLOGDecoder {
         break;
       default:
         if (typeString.equals("structschema")) {
-          // Schema records are consumed but not stored.
+          // Preserve schema records so downstream struct decoding can work.
+          table.put(key, new LogTable.LogValue(payload, typeString));
           break;
         }
         if (typeString.startsWith(STRUCT_PREFIX)) {

@@ -72,7 +72,7 @@ public class LogFileGeneratedReplayTest {
         Logger.start();
         Logger.periodicAfterUser(0, 0);
 
-        for (int i = 2; i < 400; i++) {
+        for (int i = 1; i < 400; i++) {
             Logger.periodicBeforeUser();
             Logger.processInputs("TestInput", inputs);
 
