@@ -56,3 +56,31 @@ configurations.configureEach {
         canBeResolved = true
     }
 }
+
+// Some IDE tooling expects a '*RuntimeClasspathCopy' configuration to exist.
+// Pre-create these early so AGP/tooling doesn't create them with consumable variants.
+['debug', 'release'].each { bt ->
+    def copyName = "${bt}RuntimeClasspathCopy"
+    def copyCfg = configurations.findByName(copyName) ?: configurations.create(copyName)
+    copyCfg.canBeConsumed = false
+    copyCfg.canBeResolved = true
+}
+
+// Wire the copy configs to the actual runtime classpaths once variants exist.
+afterEvaluate {
+    ['debug', 'release'].each { bt ->
+        def baseName = "${bt}RuntimeClasspath"
+        def copyName = "${bt}RuntimeClasspathCopy"
+
+        def baseCfg = configurations.findByName(baseName)
+        def copyCfg = configurations.findByName(copyName)
+
+        if (copyCfg != null) {
+            copyCfg.canBeConsumed = false
+            copyCfg.canBeResolved = true
+            if (baseCfg != null) {
+                copyCfg.extendsFrom(baseCfg)
+            }
+        }
+    }
+}
