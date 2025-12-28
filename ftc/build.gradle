@@ -125,7 +125,20 @@ configurations.configureEach {
 // Pre-create these early so AGP/tooling doesn't create them with consumable variants.
 ['debug', 'release'].each { bt ->
     def copyName = "${bt}RuntimeClasspathCopy"
-    def copyCfg = configurations.findByName(copyName) ?: configurations.create(copyName)
+    def copyCfg = configurations.findByName(copyName)
+    if (copyCfg == null) {
+        def hasResolvableFactory = configurations.metaClass.respondsTo(configurations, 'resolvable', String)
+        if (hasResolvableFactory) {
+            def provider = configurations.resolvable(copyName)
+            provider.configure {
+                canBeConsumed = false
+                canBeResolved = true
+            }
+            copyCfg = provider.get()
+        } else {
+            copyCfg = configurations.create(copyName)
+        }
+    }
     copyCfg.canBeConsumed = false
     copyCfg.canBeResolved = true
 }

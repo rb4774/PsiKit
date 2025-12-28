@@ -83,11 +83,17 @@ subprojects {
         if (name.endsWith('RuntimeClasspathCopy')) {
             canBeConsumed = false
             canBeResolved = true
+        }
+    }
+}
 
-            // Some tooling/plugins may mutate configuration flags after creation.
-            // Re-assert resolvable-only semantics right before resolution to avoid
-            // "resolution root and variant simultaneously" errors.
-            incoming.beforeResolve {
+// IntelliJ/Android Studio model building (and some plugins) may mutate configuration flags
+// after project evaluation. Re-assert resolvable-only semantics after all projects are
+// evaluated, but before any dependency resolution begins.
+gradle.projectsEvaluated {
+    allprojects { p ->
+        p.configurations.configureEach {
+            if (name.endsWith('RuntimeClasspathCopy')) {
                 canBeConsumed = false
                 canBeResolved = true
             }
