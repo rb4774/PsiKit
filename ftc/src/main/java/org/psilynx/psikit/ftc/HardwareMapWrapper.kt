@@ -1,13 +1,17 @@
 package org.psilynx.psikit.ftc
 
 import com.qualcomm.hardware.sparkfun.SparkFunOTOS
+import com.qualcomm.hardware.limelightvision.Limelight3A
 import com.qualcomm.robotcore.hardware.AccelerationSensor
 import com.qualcomm.robotcore.hardware.AnalogInput
 import com.qualcomm.robotcore.hardware.CRServo
+import com.qualcomm.robotcore.hardware.CRServoImplEx
 import com.qualcomm.robotcore.hardware.ColorSensor
 import com.qualcomm.robotcore.hardware.CompassSensor
 import com.qualcomm.robotcore.hardware.DcMotor
+import com.qualcomm.robotcore.hardware.DcMotorEx
 import com.qualcomm.robotcore.hardware.DcMotorController
+import com.qualcomm.robotcore.hardware.DcMotorImplEx
 import com.qualcomm.robotcore.hardware.DigitalChannel
 import com.qualcomm.robotcore.hardware.GyroSensor
 import com.qualcomm.robotcore.hardware.HardwareDevice
@@ -17,10 +21,12 @@ import com.qualcomm.robotcore.hardware.I2cDeviceSynch
 import com.qualcomm.robotcore.hardware.IrSeekerSensor
 import com.qualcomm.robotcore.hardware.LED
 import com.qualcomm.robotcore.hardware.LightSensor
+import com.qualcomm.robotcore.hardware.NormalizedRGBA
 import com.qualcomm.robotcore.hardware.OpticalDistanceSensor
 import com.qualcomm.robotcore.hardware.PWMOutput
 import com.qualcomm.robotcore.hardware.Servo
 import com.qualcomm.robotcore.hardware.ServoController
+import com.qualcomm.robotcore.hardware.ServoImplEx
 import com.qualcomm.robotcore.hardware.TouchSensor
 import com.qualcomm.robotcore.hardware.TouchSensorMultiplexer
 import com.qualcomm.robotcore.hardware.UltrasonicSensor
@@ -32,11 +38,13 @@ import org.psilynx.psikit.ftc.wrappers.AnalogInputWrapper
 import org.psilynx.psikit.ftc.wrappers.CrServoWrapper
 import org.psilynx.psikit.ftc.wrappers.DigitalChannelWrapper
 import org.psilynx.psikit.ftc.wrappers.HardwareInput
+import org.psilynx.psikit.ftc.wrappers.Limelight3AWrapper
 import org.psilynx.psikit.ftc.wrappers.MotorWrapper
 import org.psilynx.psikit.ftc.wrappers.PinpointWrapper
 import org.psilynx.psikit.ftc.wrappers.ServoWrapper
 import org.psilynx.psikit.ftc.wrappers.SparkFunOTOSWrapper
 import org.psilynx.psikit.ftc.wrappers.VoltageSensorWrapper
+import java.lang.reflect.Proxy
 import java.util.SortedSet
 import java.util.Spliterator
 import java.util.function.Consumer
@@ -57,12 +65,15 @@ class HardwareMapWrapper(
         mapOf<Class<out HardwareDevice>, HardwareInput<out HardwareDevice>>(
             GoBildaPinpointDriver::class.java to PinpointWrapper(null),
 
+            Limelight3A::class.java            to Limelight3AWrapper(null),
+
             DigitalChannel::class.java        to DigitalChannelWrapper(null),
             VoltageSensor::class.java         to VoltageSensorWrapper(null),
             SparkFunOTOS::class.java          to SparkFunOTOSWrapper(null),
             AnalogInput::class.java           to AnalogInputWrapper(null),
             CRServo::class.java               to CrServoWrapper(null),
             DcMotor::class.java               to MotorWrapper(null),
+            DcMotorEx::class.java             to MotorWrapper(null),
             Servo::class.java                 to ServoWrapper(null),
         )
     /*
@@ -118,17 +129,46 @@ class HardwareMapWrapper(
             is Servo -> this.servo.put( name, device )
             is LED -> this.led.put( name, device )
             else -> {
-                Logger.logWarning(
-                    "device type ${device?.apply { this::class.qualifiedName }}"
-                    + " not in all device mappings"
-                )
+                // Avoid spamming warnings in replay: many requested devices are absent and come
+                // through as null. Only warn (once per type) for real, unknown device types.
+                if (device != null) {
+                    val typeName = try {
+                        device::class.qualifiedName
+                    } catch (_: Throwable) {
+                        null
+                    } ?: device.javaClass.name
+
+                    if (warnedUnknownDeviceTypes.add(typeName)) {
+                        Logger.logWarning(
+                            "device type $typeName not in all device mappings"
+                        )
+                    }
+                }
             }
         }
         device as HardwareDevice?
-        val wrapper = (
+        val wrapperTemplate = (
             deviceWrappers[classOrInterface as Class<HardwareDevice>]
             as? HardwareInput<HardwareDevice>
-        ) ?.new(device)
+        )
+
+        val wrapper = when (wrapperTemplate) {
+            is MotorWrapper -> {
+                // DcMotorEx is usually DcMotorImplEx in the FTC SDK, but tests/fakes may not be.
+                // Avoid ClassCastException by only wrapping when the implementation matches.
+                if (device == null || device is DcMotorImplEx) wrapperTemplate.new(device as? DcMotorImplEx)
+                else null
+            }
+            is ServoWrapper -> {
+                if (device == null || device is ServoImplEx) wrapperTemplate.new(device as? ServoImplEx)
+                else null
+            }
+            is CrServoWrapper -> {
+                if (device == null || device is CRServoImplEx) wrapperTemplate.new(device as? CRServoImplEx)
+                else null
+            }
+            else -> wrapperTemplate?.new(device)
+        }
 
 
         Logger.logInfo("hardwaremap call on $classOrInterface, got " +
@@ -139,9 +179,47 @@ class HardwareMapWrapper(
         }
         if (device != null) return device
         else {
+            // In replay, we often don't have physical hardware. If the requested type is an
+            // interface (common for sensors), return a proxy with safe defaults so robot logic can
+            // continue running.
+            if (Logger.isReplay() && classOrInterface != null && classOrInterface.isInterface) {
+                @Suppress("UNCHECKED_CAST")
+                return Proxy.newProxyInstance(
+                    classOrInterface.classLoader,
+                    arrayOf(classOrInterface)
+                ) { proxy, method, _ ->
+                    when (method.name) {
+                        "toString" -> "ReplayProxy(${classOrInterface.name}:$name)"
+                        "hashCode" -> System.identityHashCode(proxy)
+                        "equals" -> false
+                        "getDeviceName" -> name
+                        // Common FTC pattern: NormalizedColorSensor.getNormalizedColors() must never be null.
+                        "getNormalizedColors" -> NormalizedRGBA()
+                        else -> {
+                            val rt = method.returnType
+                            when {
+                                rt == java.lang.Boolean.TYPE -> false
+                                rt == java.lang.Byte.TYPE -> 0.toByte()
+                                rt == java.lang.Short.TYPE -> 0.toShort()
+                                rt == java.lang.Integer.TYPE -> 0
+                                rt == java.lang.Long.TYPE -> 0L
+                                rt == java.lang.Float.TYPE -> 0.0f
+                                rt == java.lang.Double.TYPE -> 0.0
+                                rt == java.lang.Character.TYPE -> 0.toChar()
+                                rt == String::class.java -> ""
+                                rt == NormalizedRGBA::class.java -> NormalizedRGBA()
+                                rt.isEnum -> rt.enumConstants?.firstOrNull()
+                                rt.isArray -> java.lang.reflect.Array.newInstance(rt.componentType, 0)
+                                else -> null
+                            }
+                        }
+                    }
+                } as T
+            }
+
             Logger.logCritical(
                 "device to wrap is null, and no wrapper can be found." +
-                " exiting with error"
+                    " exiting with error"
             )
             error("")
         }
@@ -157,24 +235,33 @@ class HardwareMapWrapper(
     )
 
     override fun <T : Any> getAll(classOrInterface: Class<out T>): List<T> {
+        val map = hardwareMap ?: return emptyList()
 
-        Logger.logError(
-            "method getAll not wrapped correctly, it is very "
-            + "likely that using this will break determinism"
-        )
-        return hardwareMap?.getAll(classOrInterface)?.map {
-            val name = getNamesOf(it as HardwareDevice).first()
-            if(name == null) {
-                Logger.logError(
-                    "couldn't get a name for ${it::class.qualifiedName}"
-                )
-            };
-            wrap(
-                classOrInterface,
-                name ?: "None",
-                it
+        // Deterministic ordering: HardwareMap.getNamesOf() returns a Set, whose iteration order is
+        // not guaranteed. Sort names and choose the first stable name for each device.
+        val rawDevices = map.getAll(classOrInterface)
+
+        val devicesWithNames = rawDevices.map { device ->
+            val hw = device as? HardwareDevice
+            val stableName = if (hw != null) {
+                val names = map.getNamesOf(hw)
+                    .filterNotNull()
+                    .sorted()
+                names.firstOrNull() ?: hw.deviceName ?: "None"
+            } else {
+                "None"
+            }
+            stableName to device
+        }
+            .sortedWith(
+                compareBy<Pair<String, T>> { it.first }
+                    .thenBy { (it.second as? HardwareDevice)?.deviceName ?: "" }
+                    .thenBy { it.second::class.java.name }
             )
-        } ?: listOf()
+
+        return devicesWithNames.map { (name, device) ->
+            wrap(classOrInterface, name, device)
+        }
     }
 
     override fun get(deviceName: String): HardwareDevice? {
@@ -276,5 +363,6 @@ class HardwareMapWrapper(
 
     companion object {
         internal val devicesToProcess = mutableMapOf<String, LoggableInputs>()
+        private val warnedUnknownDeviceTypes = mutableSetOf<String>()
     }
 }
