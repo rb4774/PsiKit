@@ -1,3 +1,24 @@
 include ':core'
 include ':ftc'
 include ':test'
+
+// Android Studio / AGP tooling may create '*RuntimeClasspathCopy' configurations during
+// model building. On Gradle 8+, these must be resolvable-only (not consumable variants).
+// Do this as early as possible (in Settings) so plugins/tooling see the correct shape.
+gradle.beforeProject { p ->
+	p.configurations.configureEach {
+		if (name.endsWith('RuntimeClasspathCopy')) {
+			canBeConsumed = false
+			canBeResolved = true
+		}
+	}
+
+	if (p.path == ':ftc' || p.path == ':test') {
+		['debug', 'release'].each { bt ->
+			def copyName = "${bt}RuntimeClasspathCopy"
+			def cfg = p.configurations.findByName(copyName) ?: p.configurations.maybeCreate(copyName)
+			cfg.canBeConsumed = false
+			cfg.canBeResolved = true
+		}
+	}
+}
