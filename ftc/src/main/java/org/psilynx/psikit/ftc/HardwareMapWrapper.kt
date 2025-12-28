@@ -76,6 +76,24 @@ class HardwareMapWrapper(
             DcMotorEx::class.java             to MotorWrapper(null),
             Servo::class.java                 to ServoWrapper(null),
         )
+
+    init {
+        // Some user code accesses DeviceMappings directly (e.g. hardwareMap.voltageSensor.iterator().next()).
+        // When we wrap the HardwareMap, those mappings start empty unless populated. Copy over the
+        // backing voltage sensors so common patterns keep working on-robot.
+        try {
+            val map = hardwareMap
+            if (map != null) {
+                for (entry in map.voltageSensor.entrySet()) {
+                    if (entry.key != null && entry.value != null) {
+                        this.voltageSensor.put(entry.key, entry.value)
+                    }
+                }
+            }
+        } catch (_: Throwable) {
+            // Best-effort: if SDK internals change, don't crash during init.
+        }
+    }
     /*
     init {
         this.allDeviceMappings.forEach { mapping ->

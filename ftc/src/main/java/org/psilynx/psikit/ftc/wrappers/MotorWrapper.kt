@@ -63,7 +63,14 @@ class MotorWrapper(
     private var _overCurrent = false
     private var _currentPos  = 0
     private var _currentVel  = 0.0
+    private var _targetVelTps = 0.0
+    private var _targetVelAngular = 0.0
+    private var _targetVelUnit: AngleUnit? = null
     private var _power       = 0.0
+    private var _direction   = DcMotorSimple.Direction.FORWARD
+    private var _mode        = DcMotor.RunMode.RUN_WITHOUT_ENCODER
+    private var _targetPos   = 0
+    private var _busy        = false
     private var _deviceName  = "MockMotor"
     private var _version     = 1
     private var _connectionInfo = ""
@@ -79,6 +86,10 @@ class MotorWrapper(
         _currentPos        = device.currentPosition
         _currentVel        = device.velocity
         _power             = device.power
+        _direction         = device.direction
+        _mode              = device.mode
+        _targetPos         = device.targetPosition
+        _busy              = device.isBusy
         _deviceName        = device.deviceName
         _version           = device.version
         _connectionInfo    = device.connectionInfo
@@ -89,7 +100,14 @@ class MotorWrapper(
         table.put("overCurrent", _overCurrent)
         table.put("currentPos", _currentPos)
         table.put("currentVel", _currentVel)
+        table.put("targetVelTps", _targetVelTps)
+        table.put("targetVelAngular", _targetVelAngular)
+        table.put("targetVelUnit", _targetVelUnit?.name ?: "")
         table.put("power", _power)
+        table.put("direction", _direction.name)
+        table.put("mode", _mode.name)
+        table.put("targetPos", _targetPos)
+        table.put("busy", _busy)
         table.put("deviceName", _deviceName)
         table.put("version", _version)
         table.put("connectionInfo", _connectionInfo)
@@ -103,22 +121,101 @@ class MotorWrapper(
         _overCurrent       = table.get("overCurrent", false)
         _currentPos        = table.get("currentPos", 0)
         _currentVel        = table.get("currentVel", 0.0)
+        _targetVelTps      = table.get("targetVelTps", 0.0)
+        _targetVelAngular  = table.get("targetVelAngular", 0.0)
+        _targetVelUnit     = table.get("targetVelUnit", "").let { if (it.isEmpty()) null else AngleUnit.valueOf(it) }
         _power             = table.get("power", 0.0)
+        _direction         = DcMotorSimple.Direction.valueOf(table.get("direction", DcMotorSimple.Direction.FORWARD.name))
+        _mode              = DcMotor.RunMode.valueOf(table.get("mode", DcMotor.RunMode.RUN_WITHOUT_ENCODER.name))
+        _targetPos         = table.get("targetPos", 0)
+        _busy              = table.get("busy", false)
         _deviceName        = table.get("deviceName", "MockMotor")
         _version           = table.get("version", 1)
         _connectionInfo    = table.get("connectionInfo", "")
         _manufacturer      = table.get("manufacturer", HardwareDevice.Manufacturer.Other)
     }
 
-    override fun getZeroPowerBehavior() = _zeroPowerBehavior
-    override fun setZeroPowerBehavior(zeroPowerBehavior: DcMotor.ZeroPowerBehavior?)
-        = device?.setZeroPowerBehavior(zeroPowerBehavior) ?: Unit
+    override fun getZeroPowerBehavior() = device?.zeroPowerBehavior ?: _zeroPowerBehavior
+    override fun setZeroPowerBehavior(zeroPowerBehavior: DcMotor.ZeroPowerBehavior?) {
+        val resolved = zeroPowerBehavior ?: DcMotor.ZeroPowerBehavior.UNKNOWN
+        _zeroPowerBehavior = resolved
+        if (device != null) {
+            device.zeroPowerBehavior = resolved
+        } else {
+            super.setZeroPowerBehavior(resolved)
+        }
+    }
 
-    override fun getPowerFloat() = _powerFloat
-    override fun getCurrentPosition() = _currentPos
-    override fun getVelocity() = _currentVel
-    override fun getPower() = _power
-    override fun isOverCurrent() = _overCurrent
+    override fun getPowerFloat() = device?.powerFloat ?: _powerFloat
+    override fun getCurrentPosition() = device?.currentPosition ?: _currentPos
+    override fun getVelocity() = device?.velocity ?: _currentVel
+    override fun getVelocity(unit: AngleUnit?) = device?.getVelocity(unit) ?: _currentVel
+    override fun getPower() = device?.power ?: _power
+    override fun isOverCurrent() = device?.isOverCurrent ?: _overCurrent
+
+    override fun setMode(mode: DcMotor.RunMode?) {
+        val resolved = mode ?: DcMotor.RunMode.RUN_WITHOUT_ENCODER
+        _mode = resolved
+        if (device != null) {
+            device.mode = resolved
+        } else {
+            super.setMode(resolved)
+        }
+    }
+
+    override fun getMode(): DcMotor.RunMode {
+        return device?.mode ?: _mode
+    }
+
+    override fun setTargetPosition(position: Int) {
+        _targetPos = position
+        if (device != null) {
+            device.targetPosition = position
+        } else {
+            super.setTargetPosition(position)
+        }
+    }
+
+    override fun getTargetPosition(): Int {
+        return device?.targetPosition ?: _targetPos
+    }
+
+    override fun isBusy(): Boolean {
+        return device?.isBusy ?: _busy
+    }
+
+    override fun setVelocity(ticksPerSecond: Double) {
+        _targetVelTps = ticksPerSecond
+        if (device != null) {
+            device.velocity = ticksPerSecond
+        } else {
+            super.setVelocity(ticksPerSecond)
+        }
+    }
+
+    override fun setVelocity(angularRate: Double, unit: AngleUnit?) {
+        _targetVelAngular = angularRate
+        _targetVelUnit = unit
+        if (device != null) {
+            device.setVelocity(angularRate, unit)
+        } else {
+            super.setVelocity(angularRate, unit)
+        }
+    }
+
+    override fun setDirection(direction: DcMotorSimple.Direction?) {
+        val resolved = direction ?: DcMotorSimple.Direction.FORWARD
+        _direction = resolved
+        if (device != null) {
+            device.setDirection(resolved)
+        } else {
+            super.setDirection(resolved)
+        }
+    }
+
+    override fun getDirection(): DcMotorSimple.Direction {
+        return device?.direction ?: _direction
+    }
 
 
     override fun getDeviceName() = _deviceName
@@ -126,7 +223,14 @@ class MotorWrapper(
     override fun getConnectionInfo() = _connectionInfo
     override fun getManufacturer() = _manufacturer
 
-    override fun setPower(power: Double) = device?.setPower(power) ?: Unit
+    override fun setPower(power: Double) {
+        _power = power
+        if (device != null) {
+            device.power = power
+        } else {
+            super.setPower(power)
+        }
+    }
 
     override fun close() { device?.close() }
 
