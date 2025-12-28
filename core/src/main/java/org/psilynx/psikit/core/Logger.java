@@ -56,6 +56,18 @@ public class Logger {
   private Logger() {}
 
   public static void reset(){
+    // Attempt to fully stop any previous run (including stale receiver threads) so that
+    // subsequent Logger.start() calls are safe within the same JVM (e.g., unit test suites).
+    end();
+    if (receiverThread != null && receiverThread.isAlive()) {
+      receiverThread.interrupt();
+      try {
+        receiverThread.join();
+      } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+      }
+    }
+
     startTime = 0.0;
     running = false;
     cycleCount = 0;
@@ -68,8 +80,7 @@ public class Logger {
     receiverQueue.clear();
     receiverThread = new ReceiverThread(receiverQueue);
     receiverQueueFault = false;
-    DoubleSupplier timeSource =
-            () -> System.nanoTime() / 1000000000.0 - startTime;
+        Logger.timeSource = () -> System.nanoTime() / 1000000000.0 - startTime;
     simulation = false;
     replay = false;
     enableConsole = true;
@@ -199,6 +210,14 @@ public class Logger {
           + receiverThread.getName() + ") thread\n"
           + Arrays.toString(e.getStackTrace())
         );
+      }
+
+      // ReceiverThread instances cannot be restarted once stopped.
+      // Recreate it so a subsequent Logger.start() in the same JVM is safe.
+      List<LogDataReceiver> existingReceivers = receiverThread.getReceivers();
+      receiverThread = new ReceiverThread(receiverQueue);
+      for (LogDataReceiver receiver : existingReceivers) {
+        receiverThread.addDataReceiver(receiver);
       }
       //TODO: supposed to tell the robot to use the normal time source
       //RobotController.setTimeSource(RobotController::getFPGATime);
