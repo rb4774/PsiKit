@@ -75,3 +75,14 @@ kotlin {
         jvmTarget.set(JvmTarget.JVM_11)
     }
 }
+
+// Gradle/Android tooling may create *RuntimeClasspathCopy configurations during IDE model
+// building. On Gradle 8+, these must not be consumable variants.
+subprojects {
+    configurations.configureEach {
+        if (name.endsWith('RuntimeClasspathCopy')) {
+            canBeConsumed = false
+            canBeResolved = true
+        }
+    }
+}
