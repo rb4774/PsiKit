@@ -8,7 +8,10 @@ abstract class PsiKitOpMode: PsiKitLinearOpMode() {
         psiKit_init()
         Logger.start()
         while(!psiKitIsStarted){
+            Logger.periodicBeforeUser()
+            processHardwareInputs()
             psiKit_init_loop()
+            Logger.periodicAfterUser(0.0, 0.0)
         }
         psiKit_start()
         while(!psiKitIsStopRequested){

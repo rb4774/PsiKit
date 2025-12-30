@@ -3,7 +3,6 @@ package org.psilynx.psikit.ftc
 import com.qualcomm.hardware.lynx.LynxModule
 import com.qualcomm.hardware.lynx.LynxModule.BulkCachingMode.MANUAL
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous
-import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode
 import com.qualcomm.robotcore.eventloop.opmode.OpMode
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp
 import org.psilynx.psikit.core.LoggableInputs
@@ -17,8 +16,7 @@ import java.util.Date
 import java.io.File
 
 /**
- * Composition-based PsiKit logging helper for FTC [LinearOpMode]s.
- *
+ * Composition-based PsiKit logging helper for FTC [OpMode]s.
  */
 class FtcLoggingSession {
 
@@ -56,7 +54,7 @@ class FtcLoggingSession {
 
     @JvmOverloads
     fun start(
-        opMode: LinearOpMode,
+        opMode: OpMode,
         rlogPort: Int,
         filename: String = defaultLogFilename(opMode),
         folder: String = "/sdcard/FIRST/PsiKit/",
@@ -196,12 +194,15 @@ class FtcLoggingSession {
     }
 
     /** Call once per loop, after [Logger.periodicBeforeUser]. */
-    fun logOncePerLoop(opMode: LinearOpMode) {
+    fun logOncePerLoop(opMode: OpMode) {
         clearBulkCaches()
 
         if (!Logger.isReplay()) {
-            OpModeControls.started = opMode.isStarted
-            OpModeControls.stopped = opMode.isStopRequested
+            // OpMode does not expose isStarted/isStopRequested publicly, but the FTC SDK stores
+            // these as internal fields on OpModeInternal (superclass of OpMode).
+            // Read via reflection so this works for both iterative OpMode and LinearOpMode.
+            OpModeControls.started = getBooleanFieldIfPresent(opMode, "isStarted") ?: false
+            OpModeControls.stopped = getBooleanFieldIfPresent(opMode, "stopRequested") ?: false
         }
         Logger.processInputs("OpModeControls", OpModeControls)
 
@@ -239,7 +240,15 @@ class FtcLoggingSession {
         }
     }
 
-    private fun defaultLogFilename(opMode: LinearOpMode): String {
+    private fun applyOpModeControls(opMode: OpMode, started: Boolean, stopped: Boolean) {
+        // FTC SDK (RobotCore 11.0.0): LinearOpMode's opModeInInit()/opModeIsActive() ultimately
+        // depend on internal fields on OpModeInternal (superclass of OpMode).
+        // Those fields are not declared on OpMode itself, so we must search the class hierarchy.
+        setBooleanFieldIfPresent(opMode, "isStarted", started)
+        setBooleanFieldIfPresent(opMode, "stopRequested", stopped)
+    }
+
+    private fun defaultLogFilename(opMode: OpMode): String {
         val replayTag = if (
             Logger.isReplay() ||
                 System.getProperty(REPLAY_LOG_PROPERTY)?.isNotBlank() == true ||
@@ -252,7 +261,7 @@ class FtcLoggingSession {
             ".rlog"
     }
 
-    private fun recordOpModeMetadata(opMode: LinearOpMode) {
+    private fun recordOpModeMetadata(opMode: OpMode) {
         val teleOp = opMode::class.java.getAnnotation(TeleOp::class.java)
         if (teleOp != null) {
             Logger.recordMetadata("OpMode Name", teleOp.name)
@@ -271,12 +280,20 @@ class FtcLoggingSession {
         Logger.recordMetadata("OpMode type", "Unknown")
     }
 
-    private fun applyOpModeControls(opMode: LinearOpMode, started: Boolean, stopped: Boolean) {
-        // FTC SDK (RobotCore 11.0.0): LinearOpMode's opModeInInit()/opModeIsActive() ultimately
-        // depend on internal fields on OpModeInternal (superclass of OpMode).
-        // Those fields are not declared on OpMode itself, so we must search the class hierarchy.
-        setBooleanFieldIfPresent(opMode, "isStarted", started)
-        setBooleanFieldIfPresent(opMode, "stopRequested", stopped)
+    private fun getBooleanFieldIfPresent(target: Any, fieldName: String): Boolean? {
+        var clazz: Class<*>? = target.javaClass
+        while (clazz != null) {
+            try {
+                val field = clazz.getDeclaredField(fieldName)
+                field.isAccessible = true
+                return field.getBoolean(target)
+            } catch (_: NoSuchFieldException) {
+                clazz = clazz.superclass
+            } catch (_: Throwable) {
+                return null
+            }
+        }
+        return null
     }
 
     private fun setBooleanFieldIfPresent(target: Any, fieldName: String, value: Boolean): Boolean {

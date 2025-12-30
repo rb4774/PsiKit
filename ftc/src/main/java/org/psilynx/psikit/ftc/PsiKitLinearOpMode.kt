@@ -27,9 +27,19 @@ abstract class PsiKitLinearOpMode: LinearOpMode() {
     fun processHardwareInputs() {
         allHubs.forEach { it.clearBulkCache() }
 
-        OpModeControls.started = isStarted
-        OpModeControls.stopped = isStopRequested
+        // In live mode, mirror the FTC runtime state into OpModeControls.
+        // In replay, allow Logger.processInputs(...) to populate OpModeControls from the log.
+        if (!Logger.isReplay()) {
+            OpModeControls.started = isStarted
+            OpModeControls.stopped = isStopRequested
+        }
         Logger.processInputs("OpModeControls", OpModeControls)
+
+        // In replay, drive the OpMode's internal fields so opModeInInit()/opModeIsActive() behave.
+        if (Logger.isReplay() && Logger.isRunning()) {
+            setBooleanFieldIfPresent(this, "isStarted", OpModeControls.started)
+            setBooleanFieldIfPresent(this, "stopRequested", OpModeControls.stopped)
+        }
 
         HardwareMapWrapper.devicesToProcess.forEach {
             val timeToLog = measureTime {
@@ -40,6 +50,23 @@ abstract class PsiKitLinearOpMode: LinearOpMode() {
                 timeToLog.inWholeMicroseconds
             )
         }
+    }
+
+    private fun setBooleanFieldIfPresent(target: Any, fieldName: String, value: Boolean): Boolean {
+        var clazz: Class<*>? = target.javaClass
+        while (clazz != null) {
+            try {
+                val field = clazz.getDeclaredField(fieldName)
+                field.isAccessible = true
+                field.setBoolean(target, value)
+                return true
+            } catch (_: NoSuchFieldException) {
+                clazz = clazz.superclass
+            } catch (_: Throwable) {
+                return false
+            }
+        }
+        return false
     }
 
     override fun getRuntime() = Logger.getTimestamp()

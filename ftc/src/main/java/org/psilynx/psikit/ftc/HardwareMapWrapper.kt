@@ -1,6 +1,7 @@
 package org.psilynx.psikit.ftc
 
 import com.qualcomm.hardware.sparkfun.SparkFunOTOS
+import com.qualcomm.hardware.rev.RevColorSensorV3
 import com.qualcomm.hardware.limelightvision.Limelight3A
 import com.qualcomm.robotcore.hardware.AccelerationSensor
 import com.qualcomm.robotcore.hardware.AnalogInput
@@ -13,6 +14,7 @@ import com.qualcomm.robotcore.hardware.DcMotorEx
 import com.qualcomm.robotcore.hardware.DcMotorController
 import com.qualcomm.robotcore.hardware.DcMotorImplEx
 import com.qualcomm.robotcore.hardware.DigitalChannel
+import com.qualcomm.robotcore.hardware.DistanceSensor
 import com.qualcomm.robotcore.hardware.GyroSensor
 import com.qualcomm.robotcore.hardware.HardwareDevice
 import com.qualcomm.robotcore.hardware.HardwareMap
@@ -22,6 +24,7 @@ import com.qualcomm.robotcore.hardware.IrSeekerSensor
 import com.qualcomm.robotcore.hardware.LED
 import com.qualcomm.robotcore.hardware.LightSensor
 import com.qualcomm.robotcore.hardware.NormalizedRGBA
+import com.qualcomm.robotcore.hardware.NormalizedColorSensor
 import com.qualcomm.robotcore.hardware.OpticalDistanceSensor
 import com.qualcomm.robotcore.hardware.PWMOutput
 import com.qualcomm.robotcore.hardware.Servo
@@ -44,6 +47,7 @@ import org.psilynx.psikit.ftc.wrappers.PinpointWrapper
 import org.psilynx.psikit.ftc.wrappers.ServoWrapper
 import org.psilynx.psikit.ftc.wrappers.SparkFunOTOSWrapper
 import org.psilynx.psikit.ftc.wrappers.VoltageSensorWrapper
+import org.psilynx.psikit.ftc.wrappers.ColorDistanceSensorWrapper
 import java.lang.reflect.Proxy
 import java.util.SortedSet
 import java.util.Spliterator
@@ -71,6 +75,15 @@ class HardwareMapWrapper(
             VoltageSensor::class.java         to VoltageSensorWrapper(null),
             SparkFunOTOS::class.java          to SparkFunOTOSWrapper(null),
             AnalogInput::class.java           to AnalogInputWrapper(null),
+
+            // Sensors commonly retrieved via interfaces (e.g. RevColorSensorV3).
+            ColorSensor::class.java           to ColorDistanceSensorWrapper(null),
+            NormalizedColorSensor::class.java to ColorDistanceSensorWrapper(null),
+            DistanceSensor::class.java        to ColorDistanceSensorWrapper(null),
+
+            // Support concrete retrieval too (some teams prefer to lock sensor type).
+            RevColorSensorV3::class.java      to ColorDistanceSensorWrapper(null),
+
             CRServo::class.java               to CrServoWrapper(null),
             DcMotor::class.java               to MotorWrapper(null),
             DcMotorEx::class.java             to MotorWrapper(null),
@@ -192,7 +205,28 @@ class HardwareMapWrapper(
         Logger.logInfo("hardwaremap call on $classOrInterface, got " +
                 "wrapper ${wrapper?.javaClass?.canonicalName}")
         if (wrapper != null) {
+            if (wrapper is MotorWrapper) {
+                wrapper.psikitName = name
+            }
             devicesToProcess.put(name, wrapper)
+
+            // Important: if the user asked for a concrete class (not an interface), we cannot
+            // safely return an arbitrary wrapper unless it is actually an instance of that class.
+            // In that case, return the underlying device to preserve type correctness, while
+            // still logging via the wrapper stored in devicesToProcess.
+            if (classOrInterface != null) {
+                if (classOrInterface.isInstance(wrapper)) {
+                    @Suppress("UNCHECKED_CAST")
+                    return wrapper as T
+                }
+
+                if (!classOrInterface.isInterface && device != null && classOrInterface.isInstance(device)) {
+                    @Suppress("UNCHECKED_CAST")
+                    return device as T
+                }
+            }
+
+            @Suppress("UNCHECKED_CAST")
             return wrapper as T
         }
         if (device != null) return device

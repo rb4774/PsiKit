@@ -58,6 +58,56 @@ class MotorWrapper(
     MotorConfigurationType()
 ), HardwareInput<DcMotorImplEx> {
 
+    companion object {
+        /**
+         * Motor velocity reads can be expensive on some hub/SDK combos.
+         * Disable if you're seeing high `PsiKit/logTimes` for motors.
+         */
+        @JvmStatic var logVelocity: Boolean = true
+
+        /**
+         * If non-empty, velocity is only logged for motors whose HardwareMap name matches.
+         * Example: set to {"fly_left", "fly_right"}.
+         */
+        @JvmStatic var velocityMotorNames: Set<String> = emptySet()
+
+        /**
+         * If non-empty (and [velocityMotorNames] is empty), velocity is only logged when the
+         * motor name starts with one of these prefixes.
+         */
+        @JvmStatic var velocityMotorNamePrefixes: Set<String> = emptySet()
+
+        @JvmStatic fun setVelocityLoggedMotors(vararg names: String) {
+            velocityMotorNames = names.map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        }
+
+        @JvmStatic fun setVelocityLoggedMotorPrefixes(vararg prefixes: String) {
+            velocityMotorNamePrefixes = prefixes.map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        }
+
+        /**
+         * Over-current status can be expensive; default off.
+         */
+        @JvmStatic var logOverCurrent: Boolean = false
+
+        /**
+         * Busy reads can be expensive depending on mode/controller; default on.
+         */
+        @JvmStatic var logBusy: Boolean = true
+
+        /**
+         * Metadata fields are effectively static; refresh them rarely.
+         */
+        @JvmStatic var metadataRefreshPeriodSec: Double = 2.0
+
+        /**
+         * Configuration-ish fields rarely change; refresh periodically.
+         */
+        @JvmStatic var configRefreshPeriodSec: Double = 0.25
+    }
+
+    internal var psikitName: String = ""
+
     private var _zeroPowerBehavior = DcMotor.ZeroPowerBehavior.UNKNOWN
     private var _powerFloat  = false
     private var _overCurrent = false
@@ -76,24 +126,58 @@ class MotorWrapper(
     private var _connectionInfo = ""
     private var _manufacturer   = HardwareDevice.Manufacturer.Other
 
+    private var lastMetadataUpdateNs: Long = Long.MIN_VALUE
+    private var lastConfigUpdateNs: Long = Long.MIN_VALUE
+
+    private fun shouldLogVelocity(): Boolean {
+        if (!logVelocity) return false
+
+        val name = psikitName
+        if (velocityMotorNames.isNotEmpty()) {
+            return velocityMotorNames.contains(name)
+        }
+
+        if (velocityMotorNamePrefixes.isNotEmpty()) {
+            return velocityMotorNamePrefixes.any { prefix -> name.startsWith(prefix) }
+        }
+
+        return true
+    }
+
+    private fun secondsSince(ns: Long): Double {
+        if (ns == Long.MIN_VALUE) return Double.POSITIVE_INFINITY
+        return (System.nanoTime() - ns) / 1_000_000_000.0
+    }
+
     override fun new(wrapped: DcMotorImplEx?) = MotorWrapper(wrapped)
 
     override fun toLog(table: LogTable) {
         device!!
-        _zeroPowerBehavior = device.zeroPowerBehavior
-        _powerFloat        = device.powerFloat
-        _overCurrent       = device.isOverCurrent
+
+        // Static-ish metadata: cache heavily.
+        if (secondsSince(lastMetadataUpdateNs) >= metadataRefreshPeriodSec) {
+            lastMetadataUpdateNs = System.nanoTime()
+            _deviceName        = device.deviceName
+            _version           = device.version
+            _connectionInfo    = device.connectionInfo
+            _manufacturer      = device.manufacturer
+        }
+
+        // Configuration-ish fields: refresh periodically (not every loop).
+        if (secondsSince(lastConfigUpdateNs) >= configRefreshPeriodSec) {
+            lastConfigUpdateNs = System.nanoTime()
+            _zeroPowerBehavior = device.zeroPowerBehavior
+            _powerFloat        = device.powerFloat
+        }
+
+        _overCurrent       = if (logOverCurrent) device.isOverCurrent else false
         _currentPos        = device.currentPosition
-        _currentVel        = device.velocity
+        _currentVel        = if (shouldLogVelocity()) device.velocity else 0.0
         _power             = device.power
         _direction         = device.direction
         _mode              = device.mode
         _targetPos         = device.targetPosition
-        _busy              = device.isBusy
-        _deviceName        = device.deviceName
-        _version           = device.version
-        _connectionInfo    = device.connectionInfo
-        _manufacturer      = device.manufacturer
+        _busy              = if (logBusy) device.isBusy else false
 
         table.put("zeroPowerBehavior", _zeroPowerBehavior)
         table.put("powerFloat", _powerFloat)
