@@ -11,6 +11,9 @@ import org.firstinspires.ftc.robotcore.internal.usb.EthernetOverUsbSerialNumber
 import org.json.JSONObject
 import org.psilynx.psikit.core.LogTable
 import org.psilynx.psikit.core.Logger
+import org.psilynx.psikit.core.wpi.math.Pose2d
+import org.psilynx.psikit.core.wpi.math.Pose3d
+import org.psilynx.psikit.core.wpi.math.Rotation2d
 import java.lang.reflect.Field
 import java.net.InetAddress
 
@@ -39,6 +42,62 @@ class Limelight3AWrapper(
 
     override fun new(wrapped: Limelight3A?) = Limelight3AWrapper(wrapped)
 
+    private fun putPose2dAnd3dFromJsonPose6(table: LogTable, keyPrefix: String, arr: org.json.JSONArray?) {
+        if (arr == null || arr.length() < 6) return
+        val x = arr.optDouble(0, 0.0)
+        val y = arr.optDouble(1, 0.0)
+        val yawDeg = arr.optDouble(5, 0.0)
+        val pose2d = Pose2d(x, y, Rotation2d.fromDegrees(yawDeg))
+        table.put("${keyPrefix}Pose2d", pose2d)
+        table.put("${keyPrefix}Pose3d", Pose3d(pose2d))
+    }
+
+    private fun putDerivedResultFields(table: LogTable, resultJson: String) {
+        val t = table.getSubtable("result")
+        val field = table.getSubtable("field")
+
+        if (resultJson.isBlank()) {
+            t.put("valid", false)
+            t.put("pipelineIndex", 0)
+            t.put("tx", 0.0)
+            t.put("ty", 0.0)
+            t.put("fiducialCount", 0)
+            t.put("fiducialId0", -1)
+
+            // Field-friendly poses (structs)
+            field.put("botPose2d", Pose2d.kZero)
+            field.put("botPose3d", Pose3d.kZero)
+            field.put("wpiBluePose2d", Pose2d.kZero)
+            field.put("wpiBluePose3d", Pose3d.kZero)
+            field.put("wpiRedPose2d", Pose2d.kZero)
+            field.put("wpiRedPose3d", Pose3d.kZero)
+            return
+        }
+
+        try {
+            val obj = JSONObject(resultJson)
+            val v = obj.optInt("v", 0)
+            t.put("valid", v != 0)
+
+            t.put("pipelineIndex", obj.optInt("pID", 0))
+            t.put("tx", obj.optDouble("tx", 0.0))
+            t.put("ty", obj.optDouble("ty", 0.0))
+
+            val fid = obj.optJSONArray("Fiducial")
+            val fidCount = fid?.length() ?: 0
+            t.put("fiducialCount", fidCount)
+            val fid0 = if (fidCount > 0) fid?.optJSONObject(0) else null
+            t.put("fiducialId0", fid0?.optInt("fID", -1) ?: -1)
+
+            // AdvantageScope field widgets can consume Pose2d/Pose3d structs directly.
+            putPose2dAnd3dFromJsonPose6(field, "bot", obj.optJSONArray("botpose"))
+            putPose2dAnd3dFromJsonPose6(field, "wpiBlue", obj.optJSONArray("botpose_wpiblue"))
+            putPose2dAnd3dFromJsonPose6(field, "wpiRed", obj.optJSONArray("botpose_wpired"))
+        } catch (_: Throwable) {
+            // Keep logging resilient; if parsing fails we still have raw resultJson.
+        }
+    }
+
     override fun toLog(table: LogTable) {
         // Avoid extra network calls here. The overrides for getLatestResult/getStatus will
         // opportunistically refresh caches when user code calls them.
@@ -65,6 +124,8 @@ class Limelight3AWrapper(
         table.put("resultJson", cachedResultJson)
         table.put("resultTimestampMs", cachedResultTimestampMs)
         table.put("statusJson", cachedStatusJson)
+
+        putDerivedResultFields(table, cachedResultJson)
 
         table.put("deviceName", cachedDeviceName)
         table.put("connectionInfo", cachedConnectionInfo)
