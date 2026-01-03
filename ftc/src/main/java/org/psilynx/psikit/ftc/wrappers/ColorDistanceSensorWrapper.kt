@@ -7,6 +7,7 @@ import com.qualcomm.robotcore.hardware.I2cAddr
 import com.qualcomm.robotcore.hardware.NormalizedRGBA
 import com.qualcomm.robotcore.hardware.NormalizedColorSensor
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit
+import org.psilynx.psikit.ftc.FtcLogTuning
 import org.psilynx.psikit.core.LogTable
 
 /**
@@ -29,6 +30,19 @@ class ColorDistanceSensorWrapper(
     private var _distanceMeters: Double = 0.0
     private var _colorSampledThisLoop: Boolean = false
 
+    private var lastSampleNs: Long = Long.MIN_VALUE
+
+    private fun secondsSince(ns: Long): Double {
+        if (ns == Long.MIN_VALUE) return Double.POSITIVE_INFINITY
+        return (System.nanoTime() - ns) / 1_000_000_000.0
+    }
+
+    private fun shouldSampleNow(): Boolean {
+        val period = FtcLogTuning.nonBulkReadPeriodSec
+        if (period <= 0.0) return true
+        return secondsSince(lastSampleNs) >= period
+    }
+
     /**
      * Optional: if set, PsiKit will only read color when the distance is <= this threshold.
      * This can significantly reduce I2C time in loops where nothing is near the sensor.
@@ -40,6 +54,12 @@ class ColorDistanceSensorWrapper(
     override fun new(wrapped: HardwareDevice?) = ColorDistanceSensorWrapper(wrapped)
 
     override fun toLog(table: LogTable) {
+        if (!shouldSampleNow()) {
+            // Skip reads/writes this loop; LogTable retains the last values.
+            return
+        }
+        lastSampleNs = System.nanoTime()
+
         val d = device
 
         if (d != null) {

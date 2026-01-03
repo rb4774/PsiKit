@@ -10,6 +10,7 @@ import com.qualcomm.robotcore.hardware.PIDFCoefficients
 import com.qualcomm.robotcore.hardware.configuration.typecontainers.MotorConfigurationType
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit
 import org.firstinspires.ftc.robotcore.external.navigation.CurrentUnit
+import org.psilynx.psikit.ftc.FtcLogTuning
 import org.psilynx.psikit.core.LogTable
 
 class MotorWrapper(
@@ -59,6 +60,18 @@ class MotorWrapper(
 ), HardwareInput<DcMotorImplEx> {
 
     companion object {
+        const val LOG_PROFILE_FULL = 0
+        const val LOG_PROFILE_FAST = 1
+        const val LOG_PROFILE_BULK_ONLY = 2
+
+        /**
+         * Logging profile:
+         * - FULL: existing behavior
+         * - FAST: avoid expensive non-bulk readbacks where possible
+         * - BULK_ONLY: only log bulk-cached motor fields (pos/vel/busy/overcurrent)
+         */
+        @JvmField var logProfile: Int = LOG_PROFILE_FULL
+
         /**
          * Motor velocity reads can be expensive on some hub/SDK combos.
          * Disable if you're seeing high `PsiKit/logTimes` for motors.
@@ -77,6 +90,32 @@ class MotorWrapper(
          */
         @JvmStatic var velocityMotorNamePrefixes: Set<String> = emptySet()
 
+        /**
+         * Encoder-related reads (position/targetPosition/isBusy) are usually served from Lynx bulk data,
+         * but still incur overhead and can be wasted if a motor's encoder isn't connected/used.
+         */
+        @JvmStatic var logEncoderData: Boolean = true
+
+        /**
+         * If non-empty, encoder-related reads are skipped for motors whose HardwareMap name matches.
+         * Example: set to {"left_front", "left_back", "right_front", "right_back"}.
+         */
+        @JvmStatic var skipEncoderMotorNames: Set<String> = emptySet()
+
+        /**
+         * If non-empty (and [skipEncoderMotorNames] is empty), encoder-related reads are skipped when
+         * the motor name starts with one of these prefixes.
+         */
+        @JvmStatic var skipEncoderMotorNamePrefixes: Set<String> = emptySet()
+
+        @JvmStatic fun setEncoderSkippedMotors(vararg names: String) {
+            skipEncoderMotorNames = names.map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        }
+
+        @JvmStatic fun setEncoderSkippedMotorPrefixes(vararg prefixes: String) {
+            skipEncoderMotorNamePrefixes = prefixes.map { it.trim() }.filter { it.isNotEmpty() }.toSet()
+        }
+
         @JvmStatic fun setVelocityLoggedMotors(vararg names: String) {
             velocityMotorNames = names.map { it.trim() }.filter { it.isNotEmpty() }.toSet()
         }
@@ -94,6 +133,18 @@ class MotorWrapper(
          * Busy reads can be expensive depending on mode/controller; default on.
          */
         @JvmStatic var logBusy: Boolean = true
+
+        /**
+         * If true, only read/log `isBusy` when the motor mode is RUN_TO_POSITION.
+         * In other modes this is usually meaningless and often always false.
+         */
+        @JvmStatic var logBusyOnlyInRunToPosition: Boolean = true
+
+        /**
+         * Optional throttle for velocity reads. Set to > 0 to only sample velocity at that period
+         * and reuse the last value in between.
+         */
+        @JvmField var velocityRefreshPeriodSec: Double = 0.0
 
         /**
          * Metadata fields are effectively static; refresh them rarely.
@@ -128,6 +179,9 @@ class MotorWrapper(
 
     private var lastMetadataUpdateNs: Long = Long.MIN_VALUE
     private var lastConfigUpdateNs: Long = Long.MIN_VALUE
+    private var lastVelocityUpdateNs: Long = Long.MIN_VALUE
+    private var lastNonBulkUpdateNs: Long = Long.MIN_VALUE
+    private var syncedFromDeviceOnce: Boolean = false
 
     private fun shouldLogVelocity(): Boolean {
         if (!logVelocity) return false
@@ -144,9 +198,48 @@ class MotorWrapper(
         return true
     }
 
+    private fun shouldLogEncoderData(): Boolean {
+        if (!logEncoderData) return false
+
+        val name = psikitName
+        if (skipEncoderMotorNames.isNotEmpty()) {
+            return !skipEncoderMotorNames.contains(name)
+        }
+
+        if (skipEncoderMotorNamePrefixes.isNotEmpty()) {
+            return skipEncoderMotorNamePrefixes.none { prefix -> name.startsWith(prefix) }
+        }
+
+        return true
+    }
+
     private fun secondsSince(ns: Long): Double {
         if (ns == Long.MIN_VALUE) return Double.POSITIVE_INFINITY
         return (System.nanoTime() - ns) / 1_000_000_000.0
+    }
+
+    private fun shouldSampleVelocityNow(): Boolean {
+        val period = velocityRefreshPeriodSec
+        if (period <= 0.0) return true
+        return secondsSince(lastVelocityUpdateNs) >= period
+    }
+
+    private fun shouldSampleNonBulkNow(): Boolean {
+        val period = FtcLogTuning.nonBulkReadPeriodSec
+        if (period <= 0.0) return true
+        return secondsSince(lastNonBulkUpdateNs) >= period
+    }
+
+    private fun syncFromDeviceOnce(device: DcMotorImplEx) {
+        if (syncedFromDeviceOnce) return
+        syncedFromDeviceOnce = true
+        // Best-effort: these are non-bulk readbacks on many controllers.
+        try { _power = device.power } catch (_: Throwable) {}
+        try { _direction = device.direction } catch (_: Throwable) {}
+        try { _mode = device.mode } catch (_: Throwable) {}
+        try { _targetPos = device.targetPosition } catch (_: Throwable) {}
+        try { _zeroPowerBehavior = device.zeroPowerBehavior } catch (_: Throwable) {}
+        try { _powerFloat = device.powerFloat } catch (_: Throwable) {}
     }
 
     override fun new(wrapped: DcMotorImplEx?) = MotorWrapper(wrapped)
@@ -154,31 +247,82 @@ class MotorWrapper(
     override fun toLog(table: LogTable) {
         device!!
 
+        val profile = logProfile
+
+        if (profile != LOG_PROFILE_FULL) {
+            // In FAST/BULK_ONLY, avoid readback-based drift in the first log sample.
+            syncFromDeviceOnce(device)
+        }
+
         // Static-ish metadata: cache heavily.
-        if (secondsSince(lastMetadataUpdateNs) >= metadataRefreshPeriodSec) {
-            lastMetadataUpdateNs = System.nanoTime()
-            _deviceName        = device.deviceName
-            _version           = device.version
-            _connectionInfo    = device.connectionInfo
-            _manufacturer      = device.manufacturer
+        if (profile != LOG_PROFILE_BULK_ONLY) {
+            if (secondsSince(lastMetadataUpdateNs) >= metadataRefreshPeriodSec) {
+                lastMetadataUpdateNs = System.nanoTime()
+                _deviceName        = device.deviceName
+                _version           = device.version
+                _connectionInfo    = device.connectionInfo
+                _manufacturer      = device.manufacturer
+            }
         }
 
         // Configuration-ish fields: refresh periodically (not every loop).
-        if (secondsSince(lastConfigUpdateNs) >= configRefreshPeriodSec) {
-            lastConfigUpdateNs = System.nanoTime()
-            _zeroPowerBehavior = device.zeroPowerBehavior
-            _powerFloat        = device.powerFloat
+        if (profile == LOG_PROFILE_FULL) {
+            // Only do config readbacks in FULL mode.
+            if (secondsSince(lastConfigUpdateNs) >= configRefreshPeriodSec && shouldSampleNonBulkNow()) {
+                lastConfigUpdateNs = System.nanoTime()
+                lastNonBulkUpdateNs = lastConfigUpdateNs
+                _zeroPowerBehavior = device.zeroPowerBehavior
+                _powerFloat        = device.powerFloat
+            }
         }
 
         _overCurrent       = if (logOverCurrent) device.isOverCurrent else false
-        _currentPos        = device.currentPosition
-        _currentVel        = if (shouldLogVelocity()) device.velocity else 0.0
-        _power             = device.power
-        _direction         = device.direction
-        _mode              = device.mode
-        _targetPos         = device.targetPosition
-        _busy              = if (logBusy) device.isBusy else false
 
+        val logEnc = shouldLogEncoderData()
+        _currentPos        = if (logEnc) device.currentPosition else 0
+
+        val logVel = shouldLogVelocity()
+        if (logVel && shouldSampleVelocityNow()) {
+            lastVelocityUpdateNs = System.nanoTime()
+            _currentVel = device.velocity
+        } else if (!logVel) {
+            _currentVel = 0.0
+        }
+
+        if (profile == LOG_PROFILE_FULL) {
+            // These are often non-bulk readbacks. Rate limit if configured.
+            if (shouldSampleNonBulkNow()) {
+                lastNonBulkUpdateNs = System.nanoTime()
+                _power             = device.power
+                _direction         = device.direction
+                _mode              = device.mode
+                _targetPos         = if (logEnc) device.targetPosition else 0
+            }
+        } else {
+            // FAST / BULK_ONLY: don't read non-bulk fields from hardware each loop.
+            // Cached values are updated via the setters on this wrapper.
+            if (!logEnc) {
+                _targetPos = 0
+            }
+        }
+
+        val shouldReadBusy = logBusy && logEnc && (!logBusyOnlyInRunToPosition || _mode == DcMotor.RunMode.RUN_TO_POSITION)
+        _busy              = if (shouldReadBusy) device.isBusy else false
+
+        // BULK_ONLY: only write bulk-backed fields (and nothing else).
+        if (profile == LOG_PROFILE_BULK_ONLY) {
+            table.put("overCurrent", _overCurrent)
+            if (logEnc) {
+                table.put("currentPos", _currentPos)
+                table.put("busy", _busy)
+            }
+            if (logVel) {
+                table.put("currentVel", _currentVel)
+            }
+            return
+        }
+
+        // FULL/FAST: write the full schema.
         table.put("zeroPowerBehavior", _zeroPowerBehavior)
         table.put("powerFloat", _powerFloat)
         table.put("overCurrent", _overCurrent)

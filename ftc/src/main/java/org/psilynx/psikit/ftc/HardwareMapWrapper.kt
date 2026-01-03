@@ -23,6 +23,7 @@ import com.qualcomm.robotcore.hardware.I2cDeviceSynch
 import com.qualcomm.robotcore.hardware.IrSeekerSensor
 import com.qualcomm.robotcore.hardware.LED
 import com.qualcomm.robotcore.hardware.LightSensor
+import com.qualcomm.robotcore.hardware.IMU
 import com.qualcomm.robotcore.hardware.NormalizedRGBA
 import com.qualcomm.robotcore.hardware.NormalizedColorSensor
 import com.qualcomm.robotcore.hardware.OpticalDistanceSensor
@@ -41,6 +42,7 @@ import org.psilynx.psikit.ftc.wrappers.AnalogInputWrapper
 import org.psilynx.psikit.ftc.wrappers.CrServoWrapper
 import org.psilynx.psikit.ftc.wrappers.DigitalChannelWrapper
 import org.psilynx.psikit.ftc.wrappers.HardwareInput
+import org.psilynx.psikit.ftc.wrappers.ImuWrapper
 import org.psilynx.psikit.ftc.wrappers.Limelight3AWrapper
 import org.psilynx.psikit.ftc.wrappers.MotorWrapper
 import org.psilynx.psikit.ftc.wrappers.PinpointWrapper
@@ -75,6 +77,8 @@ class HardwareMapWrapper(
             VoltageSensor::class.java         to VoltageSensorWrapper(null),
             SparkFunOTOS::class.java          to SparkFunOTOSWrapper(null),
             AnalogInput::class.java           to AnalogInputWrapper(null),
+
+            IMU::class.java                   to ImuWrapper(null),
 
             // Sensors commonly retrieved via interfaces (e.g. RevColorSensorV3).
             ColorSensor::class.java           to ColorDistanceSensorWrapper(null),

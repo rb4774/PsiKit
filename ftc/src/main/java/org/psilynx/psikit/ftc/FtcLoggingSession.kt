@@ -197,6 +197,38 @@ class FtcLoggingSession {
     fun logOncePerLoop(opMode: OpMode) {
         clearBulkCaches()
 
+        // Optional: prefetch bulk data so per-device logTimes don't "blame" the first device on
+        // each hub for the full bulk transaction. This is useful for tuning.
+        if (FtcLogTuning.prefetchBulkDataEachLoop) {
+            val hubs = allHubs
+            if (hubs != null) {
+                for (hub in hubs) {
+                    val startNs = System.nanoTime()
+                    try {
+                        hub.bulkData
+                    } catch (_: Throwable) {
+                        // ignore
+                    }
+                    val endNs = System.nanoTime()
+
+                    val hubId = try {
+                        "addr${hub.moduleAddress}"
+                    } catch (_: Throwable) {
+                        try {
+                            hub.deviceName
+                        } catch (_: Throwable) {
+                            "hub"
+                        }
+                    }
+
+                    Logger.recordOutput(
+                        "PsiKit/logTimes (us)/BulkPrefetch/$hubId",
+                        (endNs - startNs) / 1_000.0
+                    )
+                }
+            }
+        }
+
         if (!Logger.isReplay()) {
             // OpMode does not expose isStarted/isStopRequested publicly, but the FTC SDK stores
             // these as internal fields on OpModeInternal (superclass of OpMode).

@@ -27,6 +27,33 @@ abstract class PsiKitLinearOpMode: LinearOpMode() {
     fun processHardwareInputs() {
         allHubs.forEach { it.clearBulkCache() }
 
+        // Optional: prefetch bulk data so per-device logTimes don't "blame" the first device on
+        // each hub for the full bulk transaction. This is useful for tuning.
+        if (FtcLogTuning.prefetchBulkDataEachLoop) {
+            allHubs.forEach { hub ->
+                val timeToPrefetch = measureTime {
+                    try {
+                        hub.bulkData
+                    } catch (_: Throwable) {
+                        // ignore
+                    }
+                }
+                val hubId = try {
+                    "addr${hub.moduleAddress}"
+                } catch (_: Throwable) {
+                    try {
+                        hub.deviceName
+                    } catch (_: Throwable) {
+                        "hub"
+                    }
+                }
+                Logger.recordOutput(
+                    "PsiKit/logTimes (us)/BulkPrefetch/$hubId",
+                    timeToPrefetch.inWholeMicroseconds
+                )
+            }
+        }
+
         // In live mode, mirror the FTC runtime state into OpModeControls.
         // In replay, allow Logger.processInputs(...) to populate OpModeControls from the log.
         if (!Logger.isReplay()) {
