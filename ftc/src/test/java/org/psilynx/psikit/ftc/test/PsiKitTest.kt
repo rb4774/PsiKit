@@ -6,11 +6,11 @@ import org.junit.runner.RunWith
 import org.psilynx.psikit.core.Logger
 import org.psilynx.psikit.core.rlog.RLOGReplay
 import org.psilynx.psikit.core.rlog.RLOGServer
-import org.psilynx.psikit.ftc.GoBildaPinpointDriver
 import org.psilynx.psikit.ftc.PsiKitLinearOpMode
 import org.psilynx.psikit.ftc.Replay
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver
 
 @Config(shadows = [ShadowAppUtil::class])
 @RunWith(RobolectricTestRunner::class)
