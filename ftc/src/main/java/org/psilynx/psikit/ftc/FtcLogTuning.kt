@@ -16,4 +16,51 @@ object FtcLogTuning {
      * and skip writes in between.
      */
     @JvmField var nonBulkReadPeriodSec: Double = 0.0
+
+    /** If true, PsiKit will log IMU values when the IMU is present in the HardwareMap. */
+    @JvmField var logImu: Boolean = true
+
+    /**
+     * If true, PsiKit will sample color/distance sensors in the background (during
+     * HardwareMap processing) and cache values inside the wrapper.
+     *
+     * If false, the wrapper will avoid background I2C reads. Live-mode user code will still get
+     * fresh values via on-demand passthrough reads.
+     */
+    @JvmField var processColorDistanceSensorsInBackground: Boolean = true
+
+    /**
+     * If true, motor current (typically a non-bulk Lynx read) will be logged.
+     *
+     * This is intentionally separate from [nonBulkReadPeriodSec] because motor current tends to be
+     * much more expensive than other non-bulk reads, and is often only needed at a slow rate.
+     */
+    @JvmField var logMotorCurrent: Boolean = false
+
+    /**
+     * Period (seconds) for sampling motor current when [logMotorCurrent] is enabled.
+     * Typical values: 0.05 (50ms) or 0.1 (100ms).
+     */
+    @JvmField var motorCurrentReadPeriodSec: Double = 0.1
+
+    /**
+     * If > 0, Pinpoint odometry updates (I2C reads) will occur at this period.
+     * The last pose is still written to the log each loop.
+     */
+    @JvmField var pinpointReadPeriodSec: Double = 0.0
+
+    /**
+     * If true (default), PsiKit will call Pinpoint `update()` when sampling for logs.
+     *
+     * If your robot code already calls Pinpoint update each loop (e.g. a motion follower
+     * localizer), set this false to avoid double I2C transactions in the same loop.
+     * PsiKit will still log the current pose each loop.
+     */
+    @JvmField var pinpointLoggerCallsUpdate: Boolean = true
+
+    /**
+     * If true and the Pinpoint device supports it (firmware V3+ for PsiKit's driver), configure a
+     * smaller bulk read scope (status + loopTime + x/y/heading). Reduces I2C payload size.
+     */
+    @JvmField var pinpointUseMinimalBulkReadScope: Boolean = false
 }

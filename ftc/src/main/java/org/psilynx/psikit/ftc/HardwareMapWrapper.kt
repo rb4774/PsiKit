@@ -46,6 +46,9 @@ import org.psilynx.psikit.ftc.wrappers.ImuWrapper
 import org.psilynx.psikit.ftc.wrappers.Limelight3AWrapper
 import org.psilynx.psikit.ftc.wrappers.MotorWrapper
 import org.psilynx.psikit.ftc.wrappers.PinpointWrapper
+import org.psilynx.psikit.ftc.wrappers.SdkPinpointWrapper
+import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver as SdkGoBildaPinpointDriver
+import org.psilynx.psikit.ftc.GoBildaPinpointDriver as PsiGoBildaPinpointDriver
 import org.psilynx.psikit.ftc.wrappers.ServoWrapper
 import org.psilynx.psikit.ftc.wrappers.SparkFunOTOSWrapper
 import org.psilynx.psikit.ftc.wrappers.VoltageSensorWrapper
@@ -68,8 +71,12 @@ class HardwareMapWrapper(
      * PinpointInput as an example.
      */
     val deviceWrappers =
-        mapOf<Class<out HardwareDevice>, HardwareInput<out HardwareDevice>>(
-            GoBildaPinpointDriver::class.java to PinpointWrapper(null),
+        mutableMapOf<Class<out HardwareDevice>, HardwareInput<out HardwareDevice>>(
+            // PsiKit's internal Pinpoint driver (used for replay + some legacy code paths)
+            PsiGoBildaPinpointDriver::class.java to PinpointWrapper(null),
+
+            // FTC SDK's Pinpoint driver (SDK 11+)
+            SdkGoBildaPinpointDriver::class.java to SdkPinpointWrapper(null),
 
             Limelight3A::class.java            to Limelight3AWrapper(null),
 
@@ -210,6 +217,9 @@ class HardwareMapWrapper(
                 "wrapper ${wrapper?.javaClass?.canonicalName}")
         if (wrapper != null) {
             if (wrapper is MotorWrapper) {
+                wrapper.psikitName = name
+            }
+            if (wrapper is SdkPinpointWrapper) {
                 wrapper.psikitName = name
             }
             devicesToProcess.put(name, wrapper)

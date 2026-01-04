@@ -9,6 +9,7 @@ import com.qualcomm.robotcore.hardware.NormalizedColorSensor
 import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit
 import org.psilynx.psikit.ftc.FtcLogTuning
 import org.psilynx.psikit.core.LogTable
+import org.psilynx.psikit.core.Logger
 
 /**
  * Generic wrapper for devices that implement [NormalizedColorSensor] and/or [DistanceSensor].
@@ -54,6 +55,12 @@ class ColorDistanceSensorWrapper(
     override fun new(wrapped: HardwareDevice?) = ColorDistanceSensorWrapper(wrapped)
 
     override fun toLog(table: LogTable) {
+        if (!FtcLogTuning.processColorDistanceSensorsInBackground) {
+            // When disabled, avoid background I2C reads entirely.
+            // User code can still read on-demand via passthrough methods.
+            return
+        }
+
         if (!shouldSampleNow()) {
             // Skip reads/writes this loop; LogTable retains the last values.
             return
@@ -132,7 +139,19 @@ class ColorDistanceSensorWrapper(
         _distanceMeters = table.get("distance/meters", 0.0)
     }
 
-    override fun getNormalizedColors(): NormalizedRGBA = _normalized
+    override fun getNormalizedColors(): NormalizedRGBA {
+        if (!Logger.isReplay() && !FtcLogTuning.processColorDistanceSensorsInBackground) {
+            val d = device as? NormalizedColorSensor
+            if (d != null) {
+                return try {
+                    d.normalizedColors
+                } catch (_: Throwable) {
+                    NormalizedRGBA()
+                }
+            }
+        }
+        return _normalized
+    }
 
     // ColorSensor compatibility: scale normalized [0..1] into [0..255] like typical SDK sensors.
     override fun red(): Int = (_normalized.red * 255.0f).toInt().coerceIn(0, 255)
@@ -175,6 +194,16 @@ class ColorDistanceSensorWrapper(
     }
 
     override fun getDistance(unit: DistanceUnit): Double {
+        if (!Logger.isReplay() && !FtcLogTuning.processColorDistanceSensorsInBackground) {
+            val d = device as? DistanceSensor
+            if (d != null) {
+                return try {
+                    d.getDistance(unit)
+                } catch (_: Throwable) {
+                    0.0
+                }
+            }
+        }
         return try {
             unit.fromUnit(DistanceUnit.METER, _distanceMeters)
         } catch (_: Throwable) {

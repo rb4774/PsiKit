@@ -11,6 +11,17 @@ import org.psilynx.psikit.core.Logger
 import org.psilynx.psikit.core.rlog.RLOGServer
 import org.psilynx.psikit.core.rlog.RLOGReplay
 import org.psilynx.psikit.core.rlog.RLOGWriter
+import org.psilynx.psikit.ftc.wrappers.AnalogInputWrapper
+import org.psilynx.psikit.ftc.wrappers.ColorDistanceSensorWrapper
+import org.psilynx.psikit.ftc.wrappers.CrServoWrapper
+import org.psilynx.psikit.ftc.wrappers.DigitalChannelWrapper
+import org.psilynx.psikit.ftc.wrappers.ImuWrapper
+import org.psilynx.psikit.ftc.wrappers.Limelight3AWrapper
+import org.psilynx.psikit.ftc.wrappers.MotorWrapper
+import org.psilynx.psikit.ftc.wrappers.PinpointWrapper
+import org.psilynx.psikit.ftc.wrappers.ServoWrapper
+import org.psilynx.psikit.ftc.wrappers.SparkFunOTOSWrapper
+import org.psilynx.psikit.ftc.wrappers.VoltageSensorWrapper
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.io.File
@@ -67,6 +78,11 @@ class FtcLoggingSession {
             // ignore
         }
         Logger.reset()
+
+        // Reset the per-session list of hardware devices to log.
+        // HardwareMapWrapper.devicesToProcess is a static map and would otherwise retain
+        // devices from prior OpModes (which can lead to unexpected logging and extra I/O).
+        HardwareMapWrapper.devicesToProcess.clear()
 
         // Optional: configure replay before Logger.start().
         // - Explicit replaySource wins
@@ -195,13 +211,22 @@ class FtcLoggingSession {
 
     /** Call once per loop, after [Logger.periodicBeforeUser]. */
     fun logOncePerLoop(opMode: OpMode) {
+        val loopStartNs = System.nanoTime()
+
+        val clearStartNs = System.nanoTime()
         clearBulkCaches()
+        val clearEndNs = System.nanoTime()
+        Logger.recordOutput(
+            "PsiKit/sessionTimes (us)/ClearBulkCaches",
+            (clearEndNs - clearStartNs) / 1_000.0
+        )
 
         // Optional: prefetch bulk data so per-device logTimes don't "blame" the first device on
         // each hub for the full bulk transaction. This is useful for tuning.
         if (FtcLogTuning.prefetchBulkDataEachLoop) {
             val hubs = allHubs
             if (hubs != null) {
+                var prefetchTotalNs = 0L
                 for (hub in hubs) {
                     val startNs = System.nanoTime()
                     try {
@@ -210,6 +235,7 @@ class FtcLoggingSession {
                         // ignore
                     }
                     val endNs = System.nanoTime()
+                    prefetchTotalNs += (endNs - startNs)
 
                     val hubId = try {
                         "addr${hub.moduleAddress}"
@@ -226,9 +252,15 @@ class FtcLoggingSession {
                         (endNs - startNs) / 1_000.0
                     )
                 }
+
+                Logger.recordOutput(
+                    "PsiKit/sessionTimes (us)/BulkPrefetchTotal",
+                    prefetchTotalNs / 1_000.0
+                )
             }
         }
 
+        val opModeControlsStartNs = System.nanoTime()
         if (!Logger.isReplay()) {
             // OpMode does not expose isStarted/isStopRequested publicly, but the FTC SDK stores
             // these as internal fields on OpModeInternal (superclass of OpMode).
@@ -244,21 +276,109 @@ class FtcLoggingSession {
             applyOpModeControls(opMode, OpModeControls.started, OpModeControls.stopped)
         }
 
+        val opModeControlsEndNs = System.nanoTime()
+        Logger.recordOutput(
+            "PsiKit/sessionTimes (us)/OpModeControls",
+            (opModeControlsEndNs - opModeControlsStartNs) / 1_000.0
+        )
+
         // DriverStation inputs (AdvantageScope Joysticks schema).
+        val dsStartNs = System.nanoTime()
         driverStationLogger.log(opMode.gamepad1, opMode.gamepad2)
+        val dsEndNs = System.nanoTime()
+        Logger.recordOutput(
+            "PsiKit/sessionTimes (us)/DriverStation",
+            (dsEndNs - dsStartNs) / 1_000.0
+        )
 
         if (enablePinpointOdometryLogging) {
             // Pinpoint odometry (AdvantageScope Pose2d/Pose3d structs under /Odometry).
+            val pinpointStartNs = System.nanoTime()
             pinpointOdometryLogger.logAll(opMode.hardwareMap)
+            val pinpointEndNs = System.nanoTime()
+            Logger.recordOutput(
+                "PsiKit/sessionTimes (us)/PinpointOdometry",
+                (pinpointEndNs - pinpointStartNs) / 1_000.0
+            )
         }
 
         // Log all accessed hardware devices.
+        var hardwareTotalNs = 0L
+
+        var motorNs = 0L
+        var servoNs = 0L
+        var crServoNs = 0L
+        var analogInputNs = 0L
+        var digitalChannelNs = 0L
+        var imuNs = 0L
+        var colorDistanceNs = 0L
+        var voltageSensorNs = 0L
+        var pinpointWrapperNs = 0L
+        var limelightNs = 0L
+        var otosNs = 0L
+        var otherNs = 0L
+
+        var maxDeviceNs = 0L
+        var maxDeviceKey: String? = null
+
         for ((key, value) in HardwareMapWrapper.devicesToProcess) {
             val startNs = System.nanoTime()
             Logger.processInputs("HardwareMap/$key", value)
             val endNs = System.nanoTime()
-            Logger.recordOutput("PsiKit/logTimes (us)/$key", (endNs - startNs) / 1_000.0)
+            val dtNs = endNs - startNs
+            hardwareTotalNs += dtNs
+            Logger.recordOutput("PsiKit/logTimes (us)/$key", dtNs / 1_000.0)
+
+            when (value) {
+                is MotorWrapper -> motorNs += dtNs
+                is ServoWrapper -> servoNs += dtNs
+                is CrServoWrapper -> crServoNs += dtNs
+                is AnalogInputWrapper -> analogInputNs += dtNs
+                is DigitalChannelWrapper -> digitalChannelNs += dtNs
+                is ImuWrapper -> imuNs += dtNs
+                is ColorDistanceSensorWrapper -> colorDistanceNs += dtNs
+                is VoltageSensorWrapper -> voltageSensorNs += dtNs
+                is PinpointWrapper -> pinpointWrapperNs += dtNs
+                is Limelight3AWrapper -> limelightNs += dtNs
+                is SparkFunOTOSWrapper -> otosNs += dtNs
+                else -> otherNs += dtNs
+            }
+
+            if (dtNs > maxDeviceNs) {
+                maxDeviceNs = dtNs
+                maxDeviceKey = key
+            }
         }
+
+        val loopEndNs = System.nanoTime()
+        Logger.recordOutput(
+            "PsiKit/sessionTimes (us)/HardwareMapTotal",
+            hardwareTotalNs / 1_000.0
+        )
+
+        // Higher-level breakdown to identify where HardwareMapTotal spikes come from.
+        Logger.recordOutput("PsiKit/sessionTimes (us)/HardwareMapByType/Motor", motorNs / 1_000.0)
+        Logger.recordOutput("PsiKit/sessionTimes (us)/HardwareMapByType/Servo", servoNs / 1_000.0)
+        Logger.recordOutput("PsiKit/sessionTimes (us)/HardwareMapByType/CrServo", crServoNs / 1_000.0)
+        Logger.recordOutput("PsiKit/sessionTimes (us)/HardwareMapByType/AnalogInput", analogInputNs / 1_000.0)
+        Logger.recordOutput("PsiKit/sessionTimes (us)/HardwareMapByType/DigitalChannel", digitalChannelNs / 1_000.0)
+        Logger.recordOutput("PsiKit/sessionTimes (us)/HardwareMapByType/Imu", imuNs / 1_000.0)
+        Logger.recordOutput("PsiKit/sessionTimes (us)/HardwareMapByType/ColorDistance", colorDistanceNs / 1_000.0)
+        Logger.recordOutput("PsiKit/sessionTimes (us)/HardwareMapByType/VoltageSensor", voltageSensorNs / 1_000.0)
+        Logger.recordOutput("PsiKit/sessionTimes (us)/HardwareMapByType/Pinpoint", pinpointWrapperNs / 1_000.0)
+        Logger.recordOutput("PsiKit/sessionTimes (us)/HardwareMapByType/Limelight", limelightNs / 1_000.0)
+        Logger.recordOutput("PsiKit/sessionTimes (us)/HardwareMapByType/OTOS", otosNs / 1_000.0)
+        Logger.recordOutput("PsiKit/sessionTimes (us)/HardwareMapByType/Other", otherNs / 1_000.0)
+
+        Logger.recordOutput("PsiKit/sessionTimes (us)/HardwareMapMaxDeviceUs", maxDeviceNs / 1_000.0)
+        if (maxDeviceKey != null) {
+            Logger.recordOutput("PsiKit/sessionTimes (us)/HardwareMapMaxDeviceKey", maxDeviceKey!!)
+        }
+
+        Logger.recordOutput(
+            "PsiKit/sessionTimes (us)/LogOncePerLoopTotal",
+            (loopEndNs - loopStartNs) / 1_000.0
+        )
     }
 
     private fun clearBulkCaches() {

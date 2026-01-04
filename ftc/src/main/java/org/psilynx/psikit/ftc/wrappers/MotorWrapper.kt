@@ -164,6 +164,7 @@ class MotorWrapper(
     private var _overCurrent = false
     private var _currentPos  = 0
     private var _currentVel  = 0.0
+    private var _currentMilliamps = 0.0
     private var _targetVelTps = 0.0
     private var _targetVelAngular = 0.0
     private var _targetVelUnit: AngleUnit? = null
@@ -180,6 +181,7 @@ class MotorWrapper(
     private var lastMetadataUpdateNs: Long = Long.MIN_VALUE
     private var lastConfigUpdateNs: Long = Long.MIN_VALUE
     private var lastVelocityUpdateNs: Long = Long.MIN_VALUE
+    private var lastMotorCurrentUpdateNs: Long = Long.MIN_VALUE
     private var lastNonBulkUpdateNs: Long = Long.MIN_VALUE
     private var syncedFromDeviceOnce: Boolean = false
 
@@ -222,6 +224,12 @@ class MotorWrapper(
         val period = velocityRefreshPeriodSec
         if (period <= 0.0) return true
         return secondsSince(lastVelocityUpdateNs) >= period
+    }
+
+    private fun shouldSampleMotorCurrentNow(): Boolean {
+        val period = FtcLogTuning.motorCurrentReadPeriodSec
+        if (period <= 0.0) return true
+        return secondsSince(lastMotorCurrentUpdateNs) >= period
     }
 
     private fun shouldSampleNonBulkNow(): Boolean {
@@ -289,6 +297,14 @@ class MotorWrapper(
             _currentVel = 0.0
         }
 
+        if (profile != LOG_PROFILE_BULK_ONLY && FtcLogTuning.logMotorCurrent && shouldSampleMotorCurrentNow()) {
+            lastMotorCurrentUpdateNs = System.nanoTime()
+            try {
+                _currentMilliamps = device.getCurrent(CurrentUnit.MILLIAMPS)
+            } catch (_: Throwable) {
+            }
+        }
+
         if (profile == LOG_PROFILE_FULL) {
             // These are often non-bulk readbacks. Rate limit if configured.
             if (shouldSampleNonBulkNow()) {
@@ -328,6 +344,9 @@ class MotorWrapper(
         table.put("overCurrent", _overCurrent)
         table.put("currentPos", _currentPos)
         table.put("currentVel", _currentVel)
+        if (profile != LOG_PROFILE_BULK_ONLY && FtcLogTuning.logMotorCurrent) {
+            table.put("currentMilliamps", _currentMilliamps)
+        }
         table.put("targetVelTps", _targetVelTps)
         table.put("targetVelAngular", _targetVelAngular)
         table.put("targetVelUnit", _targetVelUnit?.name ?: "")
@@ -349,6 +368,7 @@ class MotorWrapper(
         _overCurrent       = table.get("overCurrent", false)
         _currentPos        = table.get("currentPos", 0)
         _currentVel        = table.get("currentVel", 0.0)
+        _currentMilliamps  = table.get("currentMilliamps", 0.0)
         _targetVelTps      = table.get("targetVelTps", 0.0)
         _targetVelAngular  = table.get("targetVelAngular", 0.0)
         _targetVelUnit     = table.get("targetVelUnit", "").let { if (it.isEmpty()) null else AngleUnit.valueOf(it) }
@@ -380,6 +400,21 @@ class MotorWrapper(
     override fun getVelocity(unit: AngleUnit?) = device?.getVelocity(unit) ?: _currentVel
     override fun getPower() = device?.power ?: _power
     override fun isOverCurrent() = device?.isOverCurrent ?: _overCurrent
+
+    override fun getCurrent(unit: CurrentUnit?): Double {
+        if (device != null) {
+            return try {
+                device.getCurrent(unit)
+            } catch (_: Throwable) {
+                0.0
+            }
+        }
+
+        return when (unit ?: CurrentUnit.MILLIAMPS) {
+            CurrentUnit.AMPS -> _currentMilliamps / 1000.0
+            else -> _currentMilliamps
+        }
+    }
 
     override fun setMode(mode: DcMotor.RunMode?) {
         val resolved = mode ?: DcMotor.RunMode.RUN_WITHOUT_ENCODER

@@ -16,17 +16,33 @@ import org.psilynx.psikit.core.Logger
  */
 class PinpointOdometryLogger {
 
-    private data class NamedPinpoint(
+    private class NamedPinpoint(
         val name: String,
         val update: () -> Unit,
         val position: () -> Pose2D,
         val poses: StructPoseInputs,
-    )
+    ) {
+        var lastSampleNs: Long = Long.MIN_VALUE
+        var lastXMeters: Double = 0.0
+        var lastYMeters: Double = 0.0
+        var lastHeadingRad: Double = 0.0
+    }
 
     private val cached = mutableListOf<NamedPinpoint>()
     private var cachedOnce = false
 
     private val robotAliases = StructPoseInputs("RobotPose", "RobotPose3d")
+
+    private fun secondsSince(ns: Long): Double {
+        if (ns == Long.MIN_VALUE) return Double.POSITIVE_INFINITY
+        return (System.nanoTime() - ns) / 1_000_000_000.0
+    }
+
+    private fun shouldSampleNow(device: NamedPinpoint): Boolean {
+        val period = FtcLogTuning.pinpointReadPeriodSec
+        if (period <= 0.0) return true
+        return secondsSince(device.lastSampleNs) >= period
+    }
 
     fun logAll(hardwareMap: HardwareMap) {
         if (!cachedOnce) {
@@ -35,18 +51,20 @@ class PinpointOdometryLogger {
         }
 
         for (device in cached) {
-            device.update()
-            val pose = device.position()
+            if (shouldSampleNow(device)) {
+                device.lastSampleNs = System.nanoTime()
+                device.update()
+                val pose = device.position()
+                device.lastXMeters = pose.getX(DistanceUnit.METER)
+                device.lastYMeters = pose.getY(DistanceUnit.METER)
+                device.lastHeadingRad = pose.getHeading(AngleUnit.RADIANS)
+            }
 
-            val xMeters = pose.getX(DistanceUnit.METER)
-            val yMeters = pose.getY(DistanceUnit.METER)
-            val headingRad = pose.getHeading(AngleUnit.RADIANS)
-
-            device.poses.set(xMeters, yMeters, headingRad)
+            device.poses.set(device.lastXMeters, device.lastYMeters, device.lastHeadingRad)
             Logger.processInputs("/Odometry/${device.name}", device.poses)
 
             if (cached.size == 1) {
-                robotAliases.set(xMeters, yMeters, headingRad)
+                robotAliases.set(device.lastXMeters, device.lastYMeters, device.lastHeadingRad)
                 Logger.processInputs("/Odometry", robotAliases)
             }
         }
@@ -54,6 +72,10 @@ class PinpointOdometryLogger {
 
     private fun cacheDevices(hardwareMap: HardwareMap) {
         cached.clear()
+
+        if (FtcLogTuning.pinpointUseMinimalBulkReadScope) {
+            tryConfigureMinimalScopeForPsiKitPinpoint(hardwareMap)
+        }
 
         // 1) FTC SDK's goBILDA driver (2025+ SDKs): com.qualcomm.hardware.gobilda.GoBildaPinpointDriver
         // Use reflection so PsiKit can still compile against older SDK variants.
@@ -64,26 +86,81 @@ class PinpointOdometryLogger {
         for (device in sdkDevices) {
             val hw = device as? HardwareDevice
             val name = if (hw != null) firstNameOrFallback(hardwareMap, hw, "pinpoint") else "pinpoint"
-            val updateFn = { invokeNoArg(device, "update") }
+            val updateFn = if (FtcLogTuning.pinpointLoggerCallsUpdate) {
+                { invokeNoArg(device, "update") }
+            } else {
+                { }
+            }
             val positionFn = { invokePosition(device) }
             cached.add(NamedPinpoint(name, updateFn, positionFn, StructPoseInputs("Pose2d", "Pose3d")))
         }
 
         // 2) PsiKit's embedded driver (still supported)
-        val psikitDevices = hardwareMap.getAll(GoBildaPinpointDriver::class.java)
-        for (device in psikitDevices) {
-            val name = firstNameOrFallback(hardwareMap, device, "pinpoint")
-            cached.add(
-                NamedPinpoint(
-                    name,
-                    update = { device.update() },
-                    position = { device.position },
-                    poses = StructPoseInputs("Pose2d", "Pose3d"),
+        // Only use it when the SDK driver is not present to avoid double Pinpoint instances
+        // and extra overhead on newer SDKs.
+        if (sdkDevices.isEmpty()) {
+            // Important: if the OpMode hardwareMap is wrapped (HardwareMapWrapper), calling
+            // getAll(...) on the wrapper will create PinpointWrapper entries and register them
+            // into HardwareMapWrapper.devicesToProcess. That can cause Pinpoint to be processed
+            // twice each loop (once via /Odometry and once via /HardwareMap/<name>).
+            // Prefer the underlying SDK HardwareMap when available.
+            val baseMap = (hardwareMap as? HardwareMapWrapper)?.hardwareMap
+            val mapForPsiKitDriver = baseMap ?: hardwareMap
+
+            val psikitDevices = try {
+                mapForPsiKitDriver.getAll(GoBildaPinpointDriver::class.java)
+            } catch (_: Throwable) {
+                emptyList()
+            }
+            for (device in psikitDevices) {
+                val name = firstNameOrFallback(hardwareMap, device, "pinpoint")
+                cached.add(
+                    NamedPinpoint(
+                        name,
+                        update = if (FtcLogTuning.pinpointLoggerCallsUpdate) {
+                            { device.update() }
+                        } else {
+                            { }
+                        },
+                        position = { device.position },
+                        poses = StructPoseInputs("Pose2d", "Pose3d"),
+                    )
                 )
-            )
+            }
         }
 
         cached.sortBy { it.name }
+    }
+
+    private fun tryConfigureMinimalScopeForPsiKitPinpoint(hardwareMap: HardwareMap) {
+        // If the OpMode hardwareMap is wrapped, calling getAll(...) on the wrapper can create
+        // PinpointWrapper entries and register them into HardwareMapWrapper.devicesToProcess.
+        // This method should be a pure configuration step, not a side-effect that enables
+        // additional HardwareMap logging.
+        val baseMap = (hardwareMap as? HardwareMapWrapper)?.hardwareMap
+        val mapForPsiKitDriver = baseMap ?: hardwareMap
+
+        // Only PsiKit's embedded driver exposes Register + setBulkReadScope in this repo.
+        val devices = try {
+            mapForPsiKitDriver.getAll(GoBildaPinpointDriver::class.java)
+        } catch (_: Throwable) {
+            emptyList()
+        }
+
+        for (device in devices) {
+            try {
+                // Keep loopTime + status for LocalTest error detection.
+                device.setBulkReadScope(
+                    GoBildaPinpointDriver.Register.DEVICE_STATUS,
+                    GoBildaPinpointDriver.Register.LOOP_TIME,
+                    GoBildaPinpointDriver.Register.X_POSITION,
+                    GoBildaPinpointDriver.Register.Y_POSITION,
+                    GoBildaPinpointDriver.Register.H_ORIENTATION,
+                )
+            } catch (_: Throwable) {
+                // Ignore: firmware V1/V2 doesn't support scope changes.
+            }
+        }
     }
 
     private fun firstNameOrFallback(

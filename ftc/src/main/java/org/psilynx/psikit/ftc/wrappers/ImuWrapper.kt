@@ -64,7 +64,11 @@ class ImuWrapper(
     override fun new(wrapped: IMU?) = ImuWrapper(wrapped)
 
     override fun toLog(table: LogTable) {
-        device!!
+        if (!FtcLogTuning.logImu) {
+            return
+        }
+
+        val d = device ?: return
 
         if (!shouldSampleNow()) {
             // Skip reads/writes this loop; LogTable retains the last values.
@@ -72,7 +76,7 @@ class ImuWrapper(
         }
         lastSampleNs = System.nanoTime()
 
-        val orientation = device.getRobotYawPitchRollAngles()
+        val orientation = d.getRobotYawPitchRollAngles()
         _yawRad = orientation.getYaw(AngleUnit.RADIANS)
         _pitchRad = orientation.getPitch(AngleUnit.RADIANS)
         _rollRad = orientation.getRoll(AngleUnit.RADIANS)
@@ -86,7 +90,7 @@ class ImuWrapper(
         val lastTime = _lastTimestampSec
         if (logGyroRates) {
             // Real gyro rates (rad/s). Map robot yaw/pitch/roll rates to IMU x/y/z rotation rates.
-            val angularVelocity = device.getRobotAngularVelocity(AngleUnit.RADIANS)
+            val angularVelocity = d.getRobotAngularVelocity(AngleUnit.RADIANS)
             _pitchRateRadPerSec = angularVelocity.xRotationRate.toDouble()
             _rollRateRadPerSec = angularVelocity.yRotationRate.toDouble()
             _yawRateRadPerSec = angularVelocity.zRotationRate.toDouble()
@@ -110,10 +114,10 @@ class ImuWrapper(
         _lastRollRad = _rollRad
         _lastTimestampSec = nowSec
 
-        _deviceName = device.deviceName
-        _version = device.version
-        _connectionInfo = device.connectionInfo
-        _manufacturer = device.manufacturer
+        _deviceName = d.deviceName
+        _version = d.version
+        _connectionInfo = d.connectionInfo
+        _manufacturer = d.manufacturer
 
         table.put("yawRad", _yawRad)
         table.put("pitchRad", _pitchRad)

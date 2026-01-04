@@ -18,6 +18,7 @@ import org.psilynx.psikit.core.wpi.Struct;
 import org.psilynx.psikit.core.wpi.StructSerializable;
 import org.psilynx.psikit.core.wpi.WPISerializable;
 
+import java.io.Closeable;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -335,7 +336,55 @@ public class Logger {
    * replayed.
    */
   public static double getRealTimestamp() {
-    return getTimestamp();
+    return timeSource.getAsDouble();
+  }
+
+  /**
+   * Helper for profiling blocks of code using try-with-resources.
+   *
+   * <p>Example:
+   * <pre>
+   * try (Logger.TimedBlock t = Logger.timeMs("LoggedRobot/UserSectionMS/MyBlock")) {
+   *   doWork();
+   * }
+   * </pre>
+   *
+   * <p>This is for performance instrumentation only. Do not use it for logic that must be
+   * replayable/deterministic.
+   */
+  public static final class TimedBlock implements Closeable {
+    private final String key;
+    private final long startNs;
+    private final double scale;
+
+    private TimedBlock(String key, long startNs, double scale) {
+      this.key = key;
+      this.startNs = startNs;
+      this.scale = scale;
+    }
+
+    @Override
+    public void close() {
+      if (key == null) return;
+      long dtNs = System.nanoTime() - startNs;
+      Logger.recordOutput(key, dtNs * scale);
+    }
+  }
+
+  /** Times a block and records the duration in milliseconds. */
+  public static TimedBlock timeMs(String key) {
+    if (!Logger.isRunning()) {
+      return new TimedBlock(null, 0L, 0.0);
+    }
+    return new TimedBlock(key, System.nanoTime(), 1e-6);
+  }
+
+  /** Times a block and records the duration in microseconds. */
+  public static TimedBlock timeUs(String key) {
+    if (!Logger.isRunning()) {
+      return new TimedBlock(null, 0L, 0.0);
+    }
+    return new TimedBlock(key, System.nanoTime(), 1e-3);
   }
 
   /**
