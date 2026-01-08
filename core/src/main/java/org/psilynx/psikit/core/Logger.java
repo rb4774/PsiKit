@@ -267,9 +267,9 @@ public class Logger {
   public static void periodicAfterUser(double userCodeLength, double periodicBeforeLength) {
     if (running) {
       // Update automatic outputs from user code
-      double autoLogStart = getTimestamp();
+      double autoLogStart = getRealTimestamp();
       AutoLogOutputManager.periodic();
-      double autoLogEnd = getTimestamp();
+      double autoLogEnd = getRealTimestamp();
       // Record timing data
       recordOutput("Logger/AutoLogMS", (autoLogEnd - autoLogStart) * 1000.0);
       recordOutput("LoggedRobot/UserCodeMS", userCodeLength * 1000.0);
@@ -280,14 +280,14 @@ public class Logger {
           (periodicBeforeLength + userCodeLength) * 1000.0);
       recordOutput("Logger/QueuedCycles", receiverQueue.size());
 
-      double consoleCaptureStart = getTimestamp();
+      double consoleCaptureStart = getRealTimestamp();
       if (enableConsole) {
         String consoleData = console.getNewData();
         if (!consoleData.isEmpty()) {
           recordOutput("Console", consoleData.trim());
         }
       }
-      double consoleCaptureEnd = getTimestamp();
+      double consoleCaptureEnd = getRealTimestamp();
 
       try {
         // Send a copy of the data to the receivers. The original object will be

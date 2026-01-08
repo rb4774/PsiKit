@@ -35,11 +35,20 @@ open class PsiKitIterativeOpMode : OpMode() {
     }
 
     final override fun init_loop() {
+        val beforeUserStart = Logger.getRealTimestamp()
+
         Logger.periodicBeforeUser()
         psiKitSession.logOncePerLoop(this)
         maybeRunStartHookFromReplay()
+
+        val beforeUserEnd = Logger.getRealTimestamp()
         onPsiKitInitLoop()
-        Logger.periodicAfterUser(0.0, 0.0)
+
+        val afterUserStart = Logger.getRealTimestamp()
+        Logger.periodicAfterUser(
+            afterUserStart - beforeUserEnd,
+            beforeUserEnd - beforeUserStart
+        )
     }
 
     final override fun start() {
@@ -48,11 +57,20 @@ open class PsiKitIterativeOpMode : OpMode() {
     }
 
     final override fun loop() {
+        val beforeUserStart = Logger.getRealTimestamp()
+
         Logger.periodicBeforeUser()
         psiKitSession.logOncePerLoop(this)
         maybeRunStartHookFromReplay()
+
+        val beforeUserEnd = Logger.getRealTimestamp()
         onPsiKitLoop()
-        Logger.periodicAfterUser(0.0, 0.0)
+
+        val afterUserStart = Logger.getRealTimestamp()
+        Logger.periodicAfterUser(
+            afterUserStart - beforeUserEnd,
+            beforeUserEnd - beforeUserStart
+        )
     }
 
     final override fun stop() {
