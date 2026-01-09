@@ -70,6 +70,7 @@ class FtcLoggingSession {
         filename: String = defaultLogFilename(opMode),
         folder: String = "/sdcard/FIRST/PsiKit/",
         replaySource: LogReplaySource? = null,
+        configure: (() -> Unit)? = null,
     ) {
         // If the prior OpMode was force-stopped, PsiKit may still be "running".
         try {
@@ -184,7 +185,33 @@ class FtcLoggingSession {
             Logger.addDataReceiver(RLOGWriter(effectiveFolder, filename))
         }
 
+        // Allow user code (or a base class) to add additional receivers / metadata
+        // after Logger.reset() but before the first cycle begins.
+        configure?.invoke()
+
         Logger.start()
+    }
+
+    /**
+     * Java-friendly overload that keeps the default filename behavior while still allowing a
+     * pre-start [configure] hook.
+     */
+    @JvmOverloads
+    fun startWithConfigure(
+        opMode: OpMode,
+        rlogPort: Int,
+        folder: String = "/sdcard/FIRST/PsiKit/",
+        replaySource: LogReplaySource? = null,
+        configure: (() -> Unit)? = null,
+    ) {
+        start(
+            opMode = opMode,
+            rlogPort = rlogPort,
+            filename = defaultLogFilename(opMode),
+            folder = folder,
+            replaySource = replaySource,
+            configure = configure,
+        )
     }
 
     private fun resolveReplaySourceFromSystem(): LogReplaySource? {

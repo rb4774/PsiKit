@@ -87,6 +87,15 @@ open class PsiKitIterativeOpMode : OpMode() {
     /** Called from [init] after PsiKit is started. */
     protected open fun onPsiKitInit() {}
 
+    /**
+     * Called during PsiKit session startup after Logger.reset() and receiver setup,
+     * but before Logger.start().
+     *
+     * Use this to add custom Logger receivers (e.g. extra writers/servers) or record metadata
+     * that must be present in the first logged cycle.
+     */
+    protected open fun onPsiKitConfigureLogging() {}
+
     /** Called each [init_loop] after PsiKit logging. */
     protected open fun onPsiKitInitLoop() {}
 
@@ -103,9 +112,20 @@ open class PsiKitIterativeOpMode : OpMode() {
         if (sessionStarted) return
 
         if (rlogFilename.isNotBlank()) {
-            psiKitSession.start(this, rlogPort, filename = rlogFilename, folder = rlogFolder)
+            psiKitSession.start(
+                this,
+                rlogPort,
+                filename = rlogFilename,
+                folder = rlogFolder,
+                configure = { onPsiKitConfigureLogging() }
+            )
         } else {
-            psiKitSession.start(this, rlogPort, folder = rlogFolder)
+            psiKitSession.start(
+                this,
+                rlogPort,
+                folder = rlogFolder,
+                configure = { onPsiKitConfigureLogging() }
+            )
         }
 
         sessionStarted = true
