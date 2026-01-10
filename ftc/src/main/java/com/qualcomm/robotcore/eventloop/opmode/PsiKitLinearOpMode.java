@@ -62,6 +62,11 @@ public abstract class PsiKitLinearOpMode extends OpMode {
                     return;
                 }
             }
+
+            // In replay, START/STOP state is driven by log playback inside logOncePerLoop().
+            // Ticking here allows standard LinearOpMode patterns (waitForStart() without an init loop)
+            // to advance replay state.
+            psiKitTickOncePerEventLoopIteration();
         }
     }
 
