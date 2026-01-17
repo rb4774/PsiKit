@@ -93,6 +93,11 @@ class FtcLoggingSession {
         if (isReplay) {
             Logger.setReplay(true)
             Logger.setReplaySource(effectiveReplaySource)
+
+            // Many FTC SDK OpModes call telemetry.update() during init/loop.
+            // In replay (Robolectric/CLI), internal FTC services are often not wired,
+            // which can cause TelemetryImpl.update() to throw.
+            installReplaySafeTelemetry(opMode)
         }
 
         // Wrap hardwareMap for /HardwareMap/... inputs and replay manifest.
@@ -190,6 +195,18 @@ class FtcLoggingSession {
         configure?.invoke()
 
         Logger.start()
+    }
+
+    private fun installReplaySafeTelemetry(opMode: OpMode) {
+        try {
+            val existing = opMode.telemetry
+            if (existing != null && existing !is ReplaySafeTelemetry) {
+                opMode.telemetry = ReplaySafeTelemetry(existing)
+            }
+        } catch (_: Throwable) {
+            // Best-effort: if the FTC SDK changes or telemetry is inaccessible,
+            // do not break replay startup.
+        }
     }
 
     /**

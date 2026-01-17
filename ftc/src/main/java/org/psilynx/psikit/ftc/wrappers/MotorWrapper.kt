@@ -18,7 +18,16 @@ class MotorWrapper(
 ) : DcMotorImplEx(
     object : DcMotorControllerEx {
         override fun setMotorType(motor: Int, motorType: MotorConfigurationType?) {}
-        override fun getMotorType(motor: Int) = MotorConfigurationType.getUnspecifiedMotorType()
+        override fun getMotorType(motor: Int): MotorConfigurationType {
+            // Robolectric / SDK stubs can sometimes break the static unspecified motor lookup.
+            // Prefer the underlying real device type when available; otherwise return a safe default.
+            val fromDevice = try {
+                device?.motorType
+            } catch (_: Throwable) {
+                null
+            }
+            return fromDevice ?: MotorConfigurationType()
+        }
         override fun setMotorMode(motor: Int, mode: DcMotor.RunMode?) {}
         override fun getMotorMode(motor: Int) = DcMotor.RunMode.RUN_WITHOUT_ENCODER
         override fun setMotorPower(motor: Int, power: Double) {}

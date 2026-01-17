@@ -46,6 +46,8 @@ import org.psilynx.psikit.ftc.wrappers.ImuWrapper
 import org.psilynx.psikit.ftc.wrappers.Limelight3AWrapper
 import org.psilynx.psikit.ftc.wrappers.MotorWrapper
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver
+import com.qualcomm.hardware.lynx.LynxModule
+import com.qualcomm.hardware.lynx.LynxUsbDevice
 import org.psilynx.psikit.ftc.wrappers.PinpointWrapper
 import org.psilynx.psikit.ftc.wrappers.ServoWrapper
 import org.psilynx.psikit.ftc.wrappers.SparkFunOTOSWrapper
@@ -108,10 +110,78 @@ class HardwareMapWrapper(
                         this.voltageSensor.put(entry.key, entry.value)
                     }
                 }
+
+                // Some FTC environments (Robolectric, unit tests) provide a HardwareMap but no
+                // voltage sensors. In replay, keep common access patterns from crashing.
+                if (Logger.isReplay() && !this.voltageSensor.iterator().hasNext()) {
+                    ensureReplayVoltageSensor()
+                }
+            } else if (Logger.isReplay()) {
+                // Replay often runs without a real FTC HardwareMap. Provide a stable, non-empty
+                // voltage sensor mapping so patterns like `hardwareMap.voltageSensor.iterator().next()`
+                // don't crash during replay.
+                ensureReplayVoltageSensor()
             }
         } catch (_: Throwable) {
             // Best-effort: if SDK internals change, don't crash during init.
         }
+    }
+
+    private fun ensureReplayVoltageSensor() {
+        val replayName = "__psikit_replay_voltage"
+        if (!this.voltageSensor.entrySet().any { it.key == replayName }) {
+            val vs = VoltageSensorWrapper(null)
+            this.voltageSensor.put(replayName, vs)
+        }
+    }
+
+    private val replayConcreteDeviceCache = mutableMapOf<String, HardwareDevice>()
+
+    private fun getOrCreateReplayLynxModule(name: String): LynxModule {
+        val cached = replayConcreteDeviceCache[name]
+        if (cached is LynxModule) return cached
+
+        val fakeUsb = Proxy.newProxyInstance(
+            LynxUsbDevice::class.java.classLoader,
+            arrayOf(LynxUsbDevice::class.java)
+        ) { proxy, method, _ ->
+            when (method.name) {
+                "toString" -> "ReplayProxy(${LynxUsbDevice::class.java.name}:$name)"
+                "hashCode" -> System.identityHashCode(proxy)
+                "equals" -> false
+                "getSerialNumber" -> SerialNumber.createFake()
+                "getDeviceName" -> "ReplayLynxUsbDevice"
+                "getConnectionInfo" -> "(replay)"
+                "getVersion" -> 1
+                "getManufacturer" -> HardwareDevice.Manufacturer.Other
+                else -> {
+                    val rt = method.returnType
+                    when {
+                        rt == java.lang.Boolean.TYPE -> false
+                        rt == java.lang.Byte.TYPE -> 0.toByte()
+                        rt == java.lang.Short.TYPE -> 0.toShort()
+                        rt == java.lang.Integer.TYPE -> 0
+                        rt == java.lang.Long.TYPE -> 0L
+                        rt == java.lang.Float.TYPE -> 0.0f
+                        rt == java.lang.Double.TYPE -> 0.0
+                        rt == java.lang.Character.TYPE -> 0.toChar()
+                        rt == String::class.java -> ""
+                        rt.isEnum -> rt.enumConstants?.firstOrNull()
+                        rt.isArray -> java.lang.reflect.Array.newInstance(rt.componentType, 0)
+                        else -> null
+                    }
+                }
+            }
+        } as LynxUsbDevice
+
+        val module = LynxModule(
+            fakeUsb,
+            /* moduleAddress */ 1,
+            /* isParent */ true,
+            /* isUserModule */ true,
+        )
+        replayConcreteDeviceCache[name] = module
+        return module
     }
     /*
     init {
@@ -240,6 +310,14 @@ class HardwareMapWrapper(
         }
         if (device != null) return device
         else {
+            // Special-case: some teams use LynxModule directly for bulk caching / module info.
+            // In replay, we may not have a real REV hub object. Provide a safe synthesized
+            // LynxModule instance so code can keep running.
+            if (Logger.isReplay() && classOrInterface == LynxModule::class.java) {
+                @Suppress("UNCHECKED_CAST")
+                return getOrCreateReplayLynxModule(name) as T
+            }
+
             // In replay, we often don't have physical hardware. If the requested type is an
             // interface (common for sensors), return a proxy with safe defaults so robot logic can
             // continue running.
@@ -296,7 +374,17 @@ class HardwareMapWrapper(
     )
 
     override fun <T : Any> getAll(classOrInterface: Class<out T>): List<T> {
-        val map = hardwareMap ?: return emptyList()
+        val map = hardwareMap
+
+        // Replay often runs without a real FTC HardwareMap. Special-case common mappings
+        // that teams rely on, even when no backing HardwareMap exists.
+        if (map == null) {
+            if (Logger.isReplay() && classOrInterface == VoltageSensor::class.java) {
+                @Suppress("UNCHECKED_CAST")
+                return listOf(get(classOrInterface, "__psikit_replay_voltage"))
+            }
+            return emptyList()
+        }
 
         // Deterministic ordering: HardwareMap.getNamesOf() returns a Set, whose iteration order is
         // not guaranteed. Sort names and choose the first stable name for each device.

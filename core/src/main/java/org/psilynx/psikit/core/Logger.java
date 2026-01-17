@@ -284,7 +284,10 @@ public class Logger {
       if (enableConsole) {
         String consoleData = console.getNewData();
         if (!consoleData.isEmpty()) {
-          recordOutput("Console", consoleData.trim());
+          // Normalize line endings to avoid double-spaced output in viewers that
+          // treat both '\r' and '\n' as line breaks.
+          String normalizedConsoleData = consoleData.replace("\r\n", "\n").replace("\r", "\n");
+          recordOutput("Console", normalizedConsoleData.trim());
         }
       }
       double consoleCaptureEnd = getRealTimestamp();

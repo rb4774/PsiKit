@@ -51,6 +51,14 @@ Pull a specific `.rlog`:
 
 Tip: if you’re unsure of the exact name, copy-paste from the `find` output.
 
+## Alternative: Android Studio Device Explorer (no ADB commands)
+
+If you use Android Studio’s **Device Explorer** to download a file from the Control Hub, Android Studio caches it under a Windows path like:
+
+- `C:\Users\<you>\AppData\Local\Google\AndroidStudio<version>\device-explorer\REV Robotics Control Hub v1.0\_\sdcard\FIRST\PsiKit\...`
+
+If the `.rlog` exists at that cached path, you can replay it directly from there (no need to `adb pull` it again).
+
 ## Pull Robot Controller logs
 
 Two common sources:
@@ -106,6 +114,9 @@ Notes:
 
 - `--rerun-tasks` forces stdout even when Gradle thinks the test is up-to-date.
 - `--info` ensures test standard output is displayed.
+- If you're re-running a test that *creates* a new `.rlog` (e.g., replay-output logs), always verify a new file was actually written (check the newest filename + modified time in the output directory).
+	- If no new `.rlog` appears, run again with `--rerun-tasks` (and/or disable configuration cache) so Gradle can't skip the test.
+	- On Windows, `dir <outputDir>\*.rlog | sort LastWriteTime` is a quick sanity check.
 
 ### Option B: Add a tiny CLI `main()` (if you want a permanent tool)
 
