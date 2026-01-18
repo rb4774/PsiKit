@@ -28,6 +28,10 @@ public abstract class PsiKitLinearOpMode extends OpMode {
     private volatile long eventLoopCounter = 0;
     private long lastTickCounter = -1;
 
+    private boolean timingInitialized = false;
+    private double lastUserIntervalStart = 0.0;
+    private double lastPeriodicBeforeLen = 0.0;
+
     /** Override to change the optional RLOG server port. Return 0 to disable. */
     public int getRlogPort() {
         return 5800;
@@ -177,6 +181,11 @@ public abstract class PsiKitLinearOpMode extends OpMode {
             runOpMode();
         } finally {
             userMethodReturned = true;
+
+            // In linear style we infer user time as the time between PsiKit tick boundaries.
+            // Flush the final partially-completed interval so UserCodeMS isn't stuck at 0.
+            psiKitFinalizeTiming();
+
             try {
                 psiKitSession.end();
             } catch (Exception ignored) {
@@ -242,12 +251,40 @@ public abstract class PsiKitLinearOpMode extends OpMode {
         }
         lastTickCounter = currentCounter;
 
+        // Close previous interval (user code ran between tick boundaries).
+        double now = Logger.getRealTimestamp();
+        if (timingInitialized) {
+            double userLen = 0.0;
+            if (!this.stopRequested) {
+                userLen = Math.max(0.0, now - lastUserIntervalStart);
+            }
+            Logger.periodicAfterUser(userLen, lastPeriodicBeforeLen);
+        }
+
+        // Open next interval.
         double before = Logger.getRealTimestamp();
         Logger.periodicBeforeUser();
         psiKitSession.logOncePerLoop(this);
         double after = Logger.getRealTimestamp();
+        lastPeriodicBeforeLen = Math.max(0.0, after - before);
+        lastUserIntervalStart = Logger.getRealTimestamp();
+        timingInitialized = true;
+    }
 
-        // We don’t have an automatic boundary around user code in linear style, so userCodeLen=0.
-        Logger.periodicAfterUser(0.0, after - before);
+    private void psiKitFinalizeTiming() {
+        if (!psiKitStarted || !timingInitialized) {
+            return;
+        }
+
+        double now = Logger.getRealTimestamp();
+        double userLen = 0.0;
+        if (!this.stopRequested) {
+            userLen = Math.max(0.0, now - lastUserIntervalStart);
+        }
+        Logger.periodicAfterUser(userLen, lastPeriodicBeforeLen);
+
+        timingInitialized = false;
+        lastUserIntervalStart = 0.0;
+        lastPeriodicBeforeLen = 0.0;
     }
 }

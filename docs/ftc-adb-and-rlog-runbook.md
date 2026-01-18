@@ -20,6 +20,35 @@ PowerShell:
 
 If `adb connect` works but `adb shell` hangs intermittently, retry after `adb kill-server`.
 
+## Deploy updated code to the robot (ADB install)
+
+If you’re iterating on code and want to push a new Robot Controller APK via ADB, this is the most reliable CLI path.
+
+### Build the app APK
+
+In the `2025_Decode` repo layout used by PsiKit-based projects, the **app APK** is typically produced by `:TeamCode` (and `:FtcRobotController` is an Android library), so build:
+
+- `cd c:\code\TeraBridges\2025_Decode`
+- `./gradlew.bat :TeamCode:assembleDebug --no-daemon`
+
+### Install the app APK
+
+- `adb install -r .\TeamCode\build\outputs\apk\debug\TeamCode-debug.apk`
+
+### Restart Robot Controller (optional)
+
+- `adb shell am force-stop com.qualcomm.ftcrobotcontroller`
+- `adb shell am start -n com.qualcomm.ftcrobotcontroller/org.firstinspires.ftc.robotcontroller.internal.FtcRobotControllerActivity`
+
+### Verify you actually updated the installed app (recommended)
+
+Check the on-device `base.apk` path and timestamp/size:
+
+- `adb shell pm path com.qualcomm.ftcrobotcontroller`
+- `adb shell ls -l /data/app/<whatever>/base.apk`
+
+If the `ls -l` size/timestamp doesn’t change after an install, you probably installed an `androidTest` APK (common when running `:FtcRobotController:installDebug` in repo layouts where `FtcRobotController` is a library).
+
 ## Locate PsiKit logs on device
 
 PsiKit logs are usually under the shared storage tree:
