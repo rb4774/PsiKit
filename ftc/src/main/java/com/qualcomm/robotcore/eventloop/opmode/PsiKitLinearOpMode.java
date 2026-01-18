@@ -48,6 +48,11 @@ public abstract class PsiKitLinearOpMode extends OpMode {
         // optional
     }
 
+    /** Override to control whether PsiKit logs Pinpoint odometry (when present) under `/Odometry/...`. */
+    protected boolean enablePinpointOdometryLogging() {
+        return true;
+    }
+
     /** Override this method and place your code here. */
     public abstract void runOpMode() throws InterruptedException;
 
@@ -146,6 +151,8 @@ public abstract class PsiKitLinearOpMode extends OpMode {
     final void internalRunOpMode() throws InterruptedException {
         userMethodReturned = false;
         userMonitoredForStart = false;
+
+        psiKitSession.enablePinpointOdometryLogging = enablePinpointOdometryLogging();
 
         final Function0<Unit> configure = new Function0<Unit>() {
             @Override

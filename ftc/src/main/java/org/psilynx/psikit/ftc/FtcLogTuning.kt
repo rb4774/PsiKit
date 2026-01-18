@@ -63,4 +63,18 @@ object FtcLogTuning {
      * smaller bulk read scope (status + loopTime + x/y/heading). Reduces I2C payload size.
      */
     @JvmField var pinpointUseMinimalBulkReadScope: Boolean = false
+
+    /**
+     * If true, PinpointWrapper (HardwareMapWrapper path) will also publish `/Odometry/<name>`.
+     *
+     * When logging odometry from a motion follower (recommended), set this false to avoid
+     * duplicated or conflicting `/Odometry` sources.
+     */
+    @JvmField var pinpointWrapperPublishesOdometry: Boolean = false
+
+    /**
+     * If true, [PedroFollowerOdometryLogger] will also publish `/Odometry/<name>` and
+     * `/Odometry/<name>/PedroInches` in addition to the canonical `/Odometry` paths.
+     */
+    @JvmField var pedroFollowerPublishesNamedOdometry: Boolean = false
 }

@@ -7,6 +7,7 @@ import org.firstinspires.ftc.robotcore.external.navigation.Pose2D
 import org.firstinspires.ftc.robotcore.external.navigation.UnnormalizedAngleUnit
 import org.psilynx.psikit.core.LogTable
 import org.psilynx.psikit.core.Logger
+import org.psilynx.psikit.ftc.FtcLogTuning
 import org.psilynx.psikit.ftc.MockI2cDeviceSyncSimple
 import org.psilynx.psikit.ftc.StructPoseInputs
 
@@ -126,9 +127,11 @@ class PinpointWrapper(
 
         // Provide a convenient Odometry schema for AdvantageScope field widgets.
         val name = psikitName
-        if (!name.isNullOrBlank()) {
-            poses.set(xMeters, yMeters, headingRad)
-            Logger.processInputs("/Odometry/$name", poses)
+        if (FtcLogTuning.pinpointWrapperPublishesOdometry) {
+            if (!name.isNullOrBlank()) {
+                poses.set(xMeters, yMeters, headingRad)
+                Logger.processInputs("/Odometry/$name", poses)
+            }
         }
     }
 
