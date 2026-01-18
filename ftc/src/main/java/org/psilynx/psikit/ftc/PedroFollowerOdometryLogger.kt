@@ -38,8 +38,8 @@ object PedroFollowerOdometryLogger {
      * - +X points to the right from the red wall perspective
      *
      * Mapping (centered inches -> meters):
-     * - xCenterRotated = +yCentered
-     * - yCenterRotated = -xCentered
+      * - xCenterRotated = -yCentered
+      * - yCenterRotated = +xCentered
     * - headingCenterRotated = headingPedro + 90°
      */
     @JvmStatic
@@ -47,8 +47,8 @@ object PedroFollowerOdometryLogger {
         val xCenteredIn = xInches - FTC_FIELD_HALF_IN
         val yCenteredIn = yInches - FTC_FIELD_HALF_IN
 
-        val xCenterRotatedMeters = yCenteredIn * INCH_TO_METER
-        val yCenterRotatedMeters = -xCenteredIn * INCH_TO_METER
+          val xCenterRotatedMeters = -yCenteredIn * INCH_TO_METER
+          val yCenterRotatedMeters = xCenteredIn * INCH_TO_METER
         val headingCenterRotatedRad = normalizeRadians(headingRad + Math.PI / 2.0)
 
         canonicalPose.set(xCenterRotatedMeters, yCenterRotatedMeters, headingCenterRotatedRad)
