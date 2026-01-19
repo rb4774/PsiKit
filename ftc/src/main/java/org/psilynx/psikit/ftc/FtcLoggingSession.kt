@@ -70,6 +70,7 @@ class FtcLoggingSession {
         filename: String = defaultLogFilename(opMode),
         folder: String = "/sdcard/FIRST/PsiKit/",
         replaySource: LogReplaySource? = null,
+        metadataOpMode: OpMode = opMode,
         configure: (() -> Unit)? = null,
     ) {
         // If the prior OpMode was force-stopped, PsiKit may still be "running".
@@ -146,7 +147,8 @@ class FtcLoggingSession {
         }
 
         // Record basic OpMode metadata like PsiKit's base classes do.
-        recordOpModeMetadata(opMode)
+        // Some integrations run as a wrapper OpMode; allow metadata to come from the underlying user OpMode.
+        recordOpModeMetadata(metadataOpMode)
 
         // Port 0 (or negative) disables the server. Useful in tests and competitions.
         // In replay, keep server disabled unless explicitly enabled.
@@ -227,6 +229,7 @@ class FtcLoggingSession {
             filename = defaultLogFilename(opMode),
             folder = folder,
             replaySource = replaySource,
+            metadataOpMode = opMode,
             configure = configure,
         )
     }

@@ -6,6 +6,7 @@ import com.qualcomm.robotcore.util.RobotLog;
 import org.firstinspires.ftc.robotcore.internal.opmode.TelemetryInternal;
 import org.psilynx.psikit.core.Logger;
 import org.psilynx.psikit.ftc.FtcLoggingSession;
+import org.psilynx.psikit.ftc.autolog.PsiKitNoAutoLog;
 
 import kotlin.Unit;
 import kotlin.jvm.functions.Function0;
@@ -16,6 +17,7 @@ import kotlin.jvm.functions.Function0;
  * <p>Usage: extend this class instead of {@link LinearOpMode} and implement {@link #runOpMode()}.
  * Your existing linear-style code (waitForStart/opModeIsActive/sleep/idle) should continue to work.
  */
+@PsiKitNoAutoLog
 public abstract class PsiKitLinearOpMode extends OpMode {
 
     private volatile boolean userMethodReturned = false;
@@ -171,7 +173,7 @@ public abstract class PsiKitLinearOpMode extends OpMode {
         final String filename = getRlogFilename();
 
         if (filename != null && !filename.isEmpty()) {
-            psiKitSession.start(this, port, filename, folder, null, configure);
+            psiKitSession.start(this, port, filename, folder, null, this, configure);
         } else {
             psiKitSession.startWithConfigure(this, port, folder, null, configure);
         }

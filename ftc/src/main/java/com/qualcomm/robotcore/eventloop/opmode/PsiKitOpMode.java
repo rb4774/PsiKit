@@ -4,6 +4,7 @@ import com.qualcomm.robotcore.hardware.Gamepad;
 
 import org.psilynx.psikit.core.Logger;
 import org.psilynx.psikit.ftc.FtcLoggingSession;
+import org.psilynx.psikit.ftc.autolog.PsiKitNoAutoLog;
 
 import kotlin.Unit;
 import kotlin.jvm.functions.Function0;
@@ -19,6 +20,7 @@ import kotlin.jvm.functions.Function0;
  * FTC SDK package so it can override package-private internal hooks and does not require user code
  * to call {@code super} to keep logging ticking.
  */
+@PsiKitNoAutoLog
 public abstract class PsiKitOpMode extends OpMode {
 
     private final FtcLoggingSession psiKitSession = new FtcLoggingSession();
@@ -68,7 +70,7 @@ public abstract class PsiKitOpMode extends OpMode {
         final String filename = getRlogFilename();
 
         if (filename != null && !filename.isEmpty()) {
-            psiKitSession.start(this, port, filename, folder, null, configure);
+            psiKitSession.start(this, port, filename, folder, null, this, configure);
         } else {
             psiKitSession.startWithConfigure(this, port, folder, null, configure);
         }

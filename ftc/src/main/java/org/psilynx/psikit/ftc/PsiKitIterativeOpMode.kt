@@ -2,6 +2,7 @@ package org.psilynx.psikit.ftc
 
 import com.qualcomm.robotcore.eventloop.opmode.OpMode
 import org.psilynx.psikit.core.Logger
+import org.psilynx.psikit.ftc.autolog.PsiKitNoAutoLog
 
 /**
  * Minimal-change base class for iterative FTC [OpMode]s that want PsiKit logging.
@@ -11,6 +12,7 @@ import org.psilynx.psikit.core.Logger
  * - In replay, PsiKit may toggle internal "isStarted" without the FTC runtime invoking [start].
  *   This base class detects a false->true transition and invokes [onPsiKitStart] once.
  */
+@PsiKitNoAutoLog
 open class PsiKitIterativeOpMode : OpMode() {
 
     /** Port for the optional RLOG server. Set to 0 to disable. */

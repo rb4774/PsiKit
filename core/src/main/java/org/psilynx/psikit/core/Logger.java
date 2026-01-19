@@ -351,9 +351,6 @@ public class Logger {
    *   doWork();
    * }
    * </pre>
-   *
-   * <p>This is for performance instrumentation only. Do not use it for logic that must be
-   * replayable/deterministic.
    */
   public static final class TimedBlock implements Closeable {
     private final String key;
