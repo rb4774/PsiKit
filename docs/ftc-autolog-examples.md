@@ -318,7 +318,11 @@ If you annotate a plain `LinearOpMode`, PsiKit will start/end the session automa
 
 What these calls do:
 - `PsiKitAutoLogger.linearPeriodicBeforeUser(this)` runs `Logger.periodicBeforeUser()` and (if the auto-log session is active) `FtcLoggingSession.logOncePerLoop(...)`.
-- `PsiKitAutoLogger.linearPeriodicAfterUser(...)` records `LoggedRobot/UserCodeMS`, `LoggedRobot/LogPeriodicMS`, etc.
+- `PsiKitAutoLogger.linearPeriodicAfterUser(userCodeSec, psiKitOverheadSec)` records `LoggedRobot/UserCodeMS`, `LoggedRobot/LogPeriodicMS`, etc. Both values are durations in **seconds**.
+
+<!-- tabs:start -->
+
+#### **Java**
 
 ```java
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
@@ -337,9 +341,9 @@ public class LinearAnnotatedTicked extends LinearOpMode {
         waitForStart();
 
         while (opModeIsActive()) {
-            long beforePsiKitStart = Logger.getRealTimestamp();
+            double beforePsiKitStart = Logger.getRealTimestamp();
             PsiKitAutoLogger.linearPeriodicBeforeUser(this);
-            long beforeUserEnd = Logger.getRealTimestamp();
+            double beforeUserEnd = Logger.getRealTimestamp();
 
             // ---- your loop body (reads hardware, computes, writes outputs) ----
             Logger.recordOutput("Loop/RuntimeSec", getRuntime());
@@ -361,9 +365,8 @@ public class LinearAnnotatedTicked extends LinearOpMode {
             telemetry.addData("t", getRuntime());
             telemetry.update();
 
-            long afterUserStart = Logger.getRealTimestamp();
             PsiKitAutoLogger.linearPeriodicAfterUser(
-                afterUserStart - beforeUserEnd,
+                Logger.getRealTimestamp() - beforeUserEnd,
                 beforeUserEnd - beforePsiKitStart
             );
 
@@ -372,6 +375,126 @@ public class LinearAnnotatedTicked extends LinearOpMode {
     }
 }
 ```
+
+#### **Kotlin**
+
+```kotlin
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp
+
+import org.psilynx.psikit.core.Logger
+import org.psilynx.psikit.ftc.autolog.PsiKitAutoLog
+import org.psilynx.psikit.ftc.autolog.PsiKitAutoLogger
+
+@TeleOp(name = "Linear (annotated + explicit tick)")
+@PsiKitAutoLog
+class LinearAnnotatedTicked : LinearOpMode() {
+    override fun runOpMode() {
+        var loopCount = 0L
+        waitForStart()
+
+        while (opModeIsActive()) {
+            val beforePsiKitStart = Logger.getRealTimestamp()
+            PsiKitAutoLogger.linearPeriodicBeforeUser(this)
+            val beforeUserEnd = Logger.getRealTimestamp()
+
+            // ---- your loop body (reads hardware, computes, writes outputs) ----
+            Logger.recordOutput("Loop/RuntimeSec", runtime)
+            Logger.recordOutput("Loop/Count", ++loopCount)
+
+            val forwardCmd = -gamepad1.left_stick_y
+            val targetSpeed = forwardCmd * 2500.0
+            Logger.recordOutput("Drive/Cmd/Forward", forwardCmd)
+            Logger.recordOutput("Shooter/TargetSpeed", targetSpeed)
+
+            val volts = hardwareMap.voltageSensor?.iterator()?.takeIf { it.hasNext() }?.next()?.voltage ?: 0.0
+            Logger.recordOutput("Robot/BatteryVolts", volts)
+
+            telemetry.addData("t", runtime)
+            telemetry.update()
+
+            PsiKitAutoLogger.linearPeriodicAfterUser(
+                Logger.getRealTimestamp() - beforeUserEnd,
+                beforeUserEnd - beforePsiKitStart,
+            )
+
+            idle()
+        }
+    }
+}
+```
+
+<!-- tabs:end -->
+
+### 3d) Annotated LinearOpMode, using `PsiKitAutoLogger.linearLoop(...)`
+
+If you always write your linear code as `while (opModeIsActive()) { ... }`, you can let PsiKit own that loop and automatically tick logging each iteration.
+
+<!-- tabs:start -->
+
+#### **Java**
+
+```java
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+
+import org.psilynx.psikit.core.Logger;
+import org.psilynx.psikit.ftc.autolog.PsiKitAutoLog;
+import org.psilynx.psikit.ftc.autolog.PsiKitAutoLogger;
+
+@TeleOp(name = "Linear (annotated + linearLoop)")
+@PsiKitAutoLog
+public class LinearAnnotatedLoop extends LinearOpMode {
+    @Override
+    public void runOpMode() throws InterruptedException {
+        long loopCount = 0;
+        waitForStart();
+
+        PsiKitAutoLogger.linearLoop(this, new Runnable() {
+            @Override
+            public void run() {
+                Logger.recordOutput("Loop/RuntimeSec", getRuntime());
+                Logger.recordOutput("Loop/Count", ++loopCount);
+
+                telemetry.addLine("Running");
+                telemetry.update();
+                idle();
+            }
+        });
+    }
+}
+```
+
+#### **Kotlin**
+
+```kotlin
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode
+import com.qualcomm.robotcore.eventloop.opmode.TeleOp
+
+import org.psilynx.psikit.core.Logger
+import org.psilynx.psikit.ftc.autolog.PsiKitAutoLog
+import org.psilynx.psikit.ftc.autolog.PsiKitAutoLogger
+
+@TeleOp(name = "Linear (annotated + linearLoop)")
+@PsiKitAutoLog
+class LinearAnnotatedLoop : LinearOpMode() {
+    override fun runOpMode() {
+        var loopCount = 0L
+        waitForStart()
+
+        PsiKitAutoLogger.linearLoop(this) {
+            Logger.recordOutput("Loop/RuntimeSec", runtime)
+            Logger.recordOutput("Loop/Count", ++loopCount)
+
+            telemetry.addLine("Running")
+            telemetry.update()
+            idle()
+        }
+    }
+}
+```
+
+<!-- tabs:end -->
 
 ---
 

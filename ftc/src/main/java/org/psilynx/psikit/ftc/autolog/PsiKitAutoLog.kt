@@ -127,11 +127,42 @@ object PsiKitAutoLogger : OpModeManagerNotifier.Notifications {
      * Companion to [linearPeriodicBeforeUser].
      *
      * Call this once per user iteration after your loop body to record user-vs-PsiKit timing.
+     *
+     * Both values are durations in seconds, consistent with [Logger.getRealTimestamp] and
+     * [Logger.periodicAfterUser].
      */
     @JvmStatic
-    fun linearPeriodicAfterUser(userCodeNs: Long, psiKitOverheadNs: Long) {
-        // Logger.periodicAfterUser expects durations in microseconds.
-        Logger.periodicAfterUser(userCodeNs / 1_000.0, psiKitOverheadNs / 1_000.0)
+    fun linearPeriodicAfterUser(userCodeSec: Double, psiKitOverheadSec: Double) {
+        Logger.periodicAfterUser(userCodeSec, psiKitOverheadSec)
+    }
+
+    /**
+     * Convenience helper for annotated [LinearOpMode]s that want per-loop PsiKit logging without
+     * manually writing the `while (opModeIsActive())` loop.
+     *
+     * This method owns the loop, calls [linearPeriodicBeforeUser] / [linearPeriodicAfterUser] once
+     * per iteration, and runs [body] as the user loop body.
+     */
+    @JvmStatic
+    fun linearLoop(opMode: LinearOpMode, body: Runnable) {
+        while (opMode.opModeIsActive()) {
+            val beforeStart = Logger.getRealTimestamp()
+            linearPeriodicBeforeUser(opMode)
+            val beforeEnd = Logger.getRealTimestamp()
+
+            val userStart = beforeEnd
+            body.run()
+            val userEnd = Logger.getRealTimestamp()
+
+            linearPeriodicAfterUser(userEnd - userStart, beforeEnd - beforeStart)
+        }
+    }
+
+    /**
+     * Kotlin-friendly overload of [linearLoop].
+     */
+    inline fun linearLoop(opMode: LinearOpMode, crossinline body: () -> Unit) {
+        linearLoop(opMode, Runnable { body() })
     }
 
     /**
